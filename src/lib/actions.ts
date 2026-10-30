@@ -133,7 +133,7 @@ export async function requestResetAction(
 ): Promise<FormState & { code?: string } | FormState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const lang = String(formData.get("lang") ?? "ar");
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return { error: "email" };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "email" };
 
   const { data: row } = await supabase
     .from("users")

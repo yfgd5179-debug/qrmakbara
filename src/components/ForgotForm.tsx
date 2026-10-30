@@ -11,10 +11,7 @@ export function ForgotForm({
   dict: Record<string, unknown>;
 }) {
   const t = (dict as { auth: Record<string, string> }).auth;
-  const [state, formAction, pending] = useActionState(
-    requestResetAction as (p: FormState, fd: FormData) => Promise<FormState & { code?: string }>,
-    null
-  );
+  const [state, formAction, pending] = useActionState(requestResetAction, null);
   const code = (state as (FormState & { code?: string }) | null)?.code;
   return (
     <div className="mx-auto max-w-md px-4 py-16">
@@ -35,7 +32,14 @@ export function ForgotForm({
           <input type="hidden" name="lang" value={lang} />
           <div>
             <label className="label" htmlFor="email">{t.email}</label>
-            <input id="email" name="email" type="email" className="input" dir="ltr" required />
+            <input
+              id="email"
+              name="email"
+              type="email"
+              className="input"
+              dir="ltr"
+              required
+            />
           </div>
           <button type="submit" disabled={pending} className="btn-gold w-full">
             {pending ? "..." : t.forgotSubmit}

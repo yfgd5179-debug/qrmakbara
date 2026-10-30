@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { resetPasswordAction, type FormState } from "@/lib/actions";
+import { useRef, useState } from "react";
+import { resetPasswordAction } from "@/lib/actions";
 
 export function ResetForm({
   lang,
@@ -11,23 +11,39 @@ export function ResetForm({
   dict: Record<string, unknown>;
 }) {
   const t = (dict as { auth: Record<string, string> }).auth;
-  const [state, formAction, pending] = useActionState(resetPasswordAction, null);
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setStatus("loading");
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    fd.set("lang", lang);
+    const res = await resetPasswordAction(null, fd);
+    if (res && "error" in res && res.error) {
+      setError(res.error);
+      setStatus("error");
+    } else {
+      setStatus("done");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="card p-8">
         <h1 className="text-2xl font-bold text-white">{t.resetTitle}</h1>
-        {state && !state.error && (
+        {status === "done" && (
           <p className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
             {t.resetSuccess}
           </p>
         )}
-        {state?.error && (
+        {status === "error" && error && (
           <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {t[state.error] ?? t.invalidCode}
+            {t[error] ?? t.invalidCode}
           </p>
         )}
-        <form action={formAction} className="mt-6 space-y-4">
-          <input type="hidden" name="lang" value={lang} />
+        <form onSubmit={submit} className="mt-6 space-y-4">
           <div>
             <label className="label" htmlFor="email">{t.email}</label>
             <input id="email" name="email" type="email" className="input" dir="ltr" required />
@@ -48,8 +64,8 @@ export function ResetForm({
               required
             />
           </div>
-          <button type="submit" disabled={pending} className="btn-gold w-full">
-            {pending ? "..." : t.resetSubmit}
+          <button type="submit" disabled={status === "loading"} className="btn-gold w-full">
+            {status === "loading" ? "..." : t.resetSubmit}
           </button>
         </form>
         <p className="mt-6 text-center text-sm text-slate-400">
