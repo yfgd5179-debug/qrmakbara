@@ -18,10 +18,15 @@ export function ForgotForm({
       <div className="card p-8">
         <h1 className="text-2xl font-bold text-white">{t.forgotTitle}</h1>
         {state && !state.error && (
-          <p className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-            {t.forgotSent}
-            {code ? ` (Dev code: ${code})` : ""}
-          </p>
+          <div className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+            <p>{t.forgotSent}</p>
+            {code && <p className="mt-1 font-mono">Dev code: {code}</p>}
+            <p className="mt-2">
+              <a href={`/${lang}/reset`} className="text-gold underline">
+                {t.resetTitle} →
+              </a>
+            </p>
+          </div>
         )}
         {state?.error && (
           <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">

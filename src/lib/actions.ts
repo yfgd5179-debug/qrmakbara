@@ -117,8 +117,9 @@ async function sendResetEmail(email: string, code: string): Promise<boolean> {
       body: JSON.stringify({
         from: process.env.RESEND_FROM ?? "QR Makbara <onboarding@resend.dev>",
         to: [email],
-        subject: "QR Makbara — password reset code",
-        text: `Your password reset code is: ${code}\\n\\nIt expires in 10 minutes. If you did not request this, ignore this email.`,
+        subject: `QR Makbara — password reset code: ${code}`,
+        text: `Your password reset code is: ${code}\n\nIt expires in 10 minutes. If you did not request this, ignore this email.`,
+        html: `<p>Your password reset code is: <strong>${code}</strong></p><p>It expires in 10 minutes. If you did not request this, ignore this email.</p>`,
       }),
     });
     return res.ok;
