@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI", Tahoma, "Noto Sans Arabic", "Noto Kufi Arabic",
+    system-ui, -apple-system, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #0b1120;
+  color: #e2e8f0;
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* Elegant gold accent used across the site */
+.text-gold {
+  color: #d4af37;
+}
+
+.bg-gold {
+  background-color: #d4af37;
+}
+
+.btn-gold {
+  background: linear-gradient(135deg, #e6c46a, #c99a2e);
+  color: #1a1206;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  padding: 0.7rem 1.4rem;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.btn-gold:hover {
+  filter: brightness(1.08);
+}
+
+.btn-gold:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1rem;
+  backdrop-filter: blur(6px);
+}
+
+.input {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  color: #e2e8f0;
+  outline: none;
+}
+
+.input:focus {
+  border-color: #d4af37;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+}
+
+.label {
+  display: block;
+  font-size: 0.875rem;
+  color: #94a3b8;
+  margin-bottom: 0.3rem;
+}
