@@ -8,6 +8,8 @@ create table if not exists users (
   name text not null default '',
   phone text not null default '',
   country text not null default 'IQ',
+  reset_code text,
+  reset_expires timestamptz,
   created_at timestamptz not null
 );
 

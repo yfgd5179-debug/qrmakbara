@@ -51,7 +51,7 @@ export function AuthForm({
 
           <div>
             <label className="label" htmlFor="email">
-              {t.email}
+              {mode === "login" ? t.emailOrPhone : t.email}
             </label>
             <input
               id="email"
@@ -130,6 +130,13 @@ export function AuthForm({
           </button>
         </form>
 
+        {mode === "login" && (
+          <p className="text-end text-sm">
+            <Link href={`/${lang}/forgot`} className="text-gold underline">
+              {t.forgotLink}
+            </Link>
+          </p>
+        )}
         <p className="mt-6 text-center text-sm text-slate-400">
           {mode === "login" ? t.noAccount : t.haveAccount}{" "}
           <Link

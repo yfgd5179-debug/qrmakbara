@@ -83,14 +83,14 @@ export async function loginAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const identifier = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
   const { data: row } = await supabase
     .from("users")
     .select("*")
-    .eq("email", email)
+    .or(`email.eq.${identifier.toLowerCase()},phone.eq.${identifier}`)
     .maybeSingle();
   if (!row || !verifyPassword(password, (row as { password_hash: string }).password_hash)) {
     return { error: "invalid" };
@@ -102,6 +102,91 @@ export async function loginAction(
 export async function logoutAction(): Promise<void> {
   await destroySession();
   redirect("/");
+}
+
+async function sendResetEmail(email: string, code: string): Promise<boolean> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return false;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM ?? "QR Makbara <onboarding@resend.dev>",
+        to: [email],
+        subject: "QR Makbara — password reset code",
+        text: `Your password reset code is: ${code}\\n\\nIt expires in 10 minutes. If you did not request this, ignore this email.`,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function requestResetAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState & { code?: string } | FormState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const lang = String(formData.get("lang") ?? "ar");
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return { error: "email" };
+
+  const { data: row } = await supabase
+    .from("users")
+    .select("id, email")
+    .eq("email", email)
+    .maybeSingle();
+
+  // Always respond success to avoid leaking which emails exist.
+  if (row) {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await supabase
+      .from("users")
+      .update({ reset_code: code, reset_expires: expires })
+      .eq("id", (row as { id: string }).id);
+    const sent = await sendResetEmail(email, code);
+    if (!sent) {
+      // Dev fallback: return the code so it can be shown on screen.
+      return { error: undefined, code } as FormState & { code: string };
+    }
+  }
+  return { error: undefined } as FormState;
+}
+
+export async function resetPasswordAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const code = String(formData.get("code") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 6) return { error: "password" };
+
+  const { data: row } = await supabase
+    .from("users")
+    .select("id, reset_code, reset_expires")
+    .eq("email", email)
+    .maybeSingle();
+  if (!row) return { error: "invalidCode" };
+  const r = row as { reset_code: string | null; reset_expires: string | null };
+  if (!r.reset_code || r.reset_code !== code) return { error: "invalidCode" };
+  if (!r.reset_expires || new Date(r.reset_expires).getTime() < Date.now()) {
+    return { error: "invalidCode" };
+  }
+  await supabase
+    .from("users")
+    .update({
+      password_hash: hashPassword(password),
+      reset_code: null,
+      reset_expires: null,
+    })
+    .eq("id", (row as { id: string }).id);
+  return { error: undefined } as FormState;
 }
 
 /* ------------------------- memorials -------------------------- */
