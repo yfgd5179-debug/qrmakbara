@@ -31,10 +31,15 @@ function facts(m: Memorial): string {
 }
 
 function buildPrompt(m: Memorial, lang: Locale): string {
+  const langName = LANG_NAMES[lang];
   return `You are a respectful biographer. Write a warm, dignified life story (obituary-style biography) for a deceased person, based on the facts below.
 
+CRITICAL LANGUAGE RULE:
+- The ENTIRE response MUST be written in ${langName}.
+- Do NOT use English or any other language, even for a single word, unless ${langName} is English.
+- If you cannot write in ${langName}, write nothing.
+
 Requirements:
-- Write entirely in ${LANG_NAMES[lang]}.
 - 4 to 6 short paragraphs, flowing naturally, no headings or bullet points.
 - Use only the facts given; do not invent names, dates, or events. You may connect facts with gentle, respectful language.
 - Tone: tender, honoring, hopeful — suitable to be shown on a memorial page visited by family and friends.
@@ -91,10 +96,14 @@ async function pollinations(prompt: string): Promise<string> {
       body: JSON.stringify({
         model: "openai",
         messages: [
-          { role: "system", content: "You are a careful, respectful biographer." },
+          {
+            role: "system",
+            content:
+              "You are a careful, respectful biographer. You MUST write the entire response in the language requested by the user. Never use English unless explicitly requested.",
+          },
           { role: "user", content: prompt },
         ],
-        temperature: 0.8,
+        temperature: 0.7,
       }),
     },
     45000
@@ -119,8 +128,15 @@ async function groq(prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.8,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a respectful biographer. Write the entire response in the language requested by the user. Never use English unless explicitly requested.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7,
       }),
     },
     30000
@@ -141,7 +157,15 @@ async function gemini(prompt: string): Promise<string> {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        systemInstruction: {
+          parts: [
+            {
+              text: "You are a respectful biographer. Write the entire response in the language requested by the user. Never use English unless explicitly requested.",
+            },
+          ],
+        },
         contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7 },
       }),
     },
     30000
@@ -227,9 +251,23 @@ function templateStory(m: Memorial, lang: Locale): string {
     .join("\n\n");
 }
 
+function looksLikeLanguage(text: string, lang: Locale): boolean {
+  if (lang === "ar" || lang === "ku") {
+    // Sorani/Arabic use Arabic script
+    return /[\\u0600-\\u06FF]/.test(text);
+  }
+  if (lang === "tr") {
+    const lower = " " + text.toLowerCase() + " ";
+    const enStop = [" the ", " and ", " was ", " were ", " of ", " in ", " to ", " is ", " are "];
+    const hits = enStop.filter((w) => lower.includes(w)).length;
+    return hits < 3;
+  }
+  return true;
+}
+
 /**
  * Generate the life story. Free by default:
- * 1) Pollinations (no key needed), 2) GROQ_API_KEY, 3) GEMINI_API_KEY, 4) local template.
+ * 1) GROQ_API_KEY (fast & high quality), 2) Pollinations (no key), 3) GEMINI_API_KEY, 4) local template.
  */
 export async function generateStory(
   m: Memorial,
@@ -237,16 +275,17 @@ export async function generateStory(
 ): Promise<StoryResult> {
   const prompt = buildPrompt(m, lang);
 
-  const providers: [string, (p: string) => Promise<string>][] = [
-    ["pollinations", pollinations],
-    ["groq", groq],
-    ["gemini", gemini],
-  ];
+  const providers: [string, (p: string) => Promise<string>][] = [];
+  if (process.env.GROQ_API_KEY) providers.push(["groq", groq]);
+  providers.push(["pollinations", pollinations]);
+  if (process.env.GEMINI_API_KEY) providers.push(["gemini", gemini]);
 
   for (const [name, fn] of providers) {
     try {
       const story = await fn(prompt);
-      if (story && story.length > 80) return { story, provider: name };
+      if (story && story.length > 80 && looksLikeLanguage(story, lang)) {
+        return { story, provider: name };
+      }
     } catch {
       // try next provider
     }
