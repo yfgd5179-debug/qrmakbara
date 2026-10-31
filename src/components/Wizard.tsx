@@ -18,6 +18,7 @@ import {
   type PaymentMethod,
 } from "@/lib/commerce";
 import { COUNTRY_CODES, type Dict } from "@/lib/dict";
+import { compressImage } from "@/lib/compress";
 import { LOCALES, type Locale } from "@/lib/types";
 
 type Props = {
@@ -164,31 +165,39 @@ export function Wizard({ lang, dict, user }: Props) {
       const list = Array.from(files);
       const maxExt = kind === "photos" ? "image/" : "video/";
 
-      for (const f of list) {
+      // Photos are compressed in the browser first (WebP, ≤2048px) — this
+      // keeps them far below the Supabase free-plan 50 MB/file cap.
+      const prepared =
+        kind === "photos"
+          ? await Promise.all(list.map((f) => compressImage(f)))
+          : list;
+
+      for (const f of prepared) {
         // Fast local checks before asking the server for upload URLs.
         if (!f.type.startsWith(maxExt)) return fail("type");
         if (f.size > 100 * 1024 * 1024) return fail("size");
       }
 
-      const paths: string[] = [];
-      for (const f of list) {
+      const uploads: { path: string; backend: "supabase" | "r2" }[] = [];
+      for (const f of prepared) {
         // 1) Server validates ownership/type/size and mints a signed URL.
         const ticket = await createUploadUrlAction(id, kind, f.type, f.size);
         if ("error" in ticket) return fail(ticket.error);
 
-        // 2) Browser uploads the file straight to Supabase Storage — the
-        //    request never passes through the (4.5 MB-limited) server.
+        // 2) Browser uploads the file straight to storage (Supabase for
+        //    photos, Cloudflare R2 for videos) — the request never passes
+        //    through the (4.5 MB-limited) server.
         const put = await fetch(ticket.signedUrl, {
           method: "PUT",
           headers: { "content-type": f.type },
           body: f,
         });
         if (!put.ok) return fail("upload");
-        paths.push(ticket.path);
+        uploads.push({ path: ticket.path, backend: ticket.backend });
       }
 
       // 3) Server verifies the files exist and records their public URLs.
-      const res = await finalizeUploadAction(id, kind, paths);
+      const res = await finalizeUploadAction(id, kind, uploads);
       if (res.error) return fail(res.error);
       if (kind === "photos") setPhotos(res.urls);
       else setVideos(res.urls);

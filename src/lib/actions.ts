@@ -14,6 +14,7 @@ import {
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { supabase, newId, parseList } from "./db";
 import { hasLocale } from "./dict";
+import { r2Configured, r2Delete, r2Exists, r2KeyFromUrl, r2PublicUrl, r2SignedUrl } from "./r2";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -318,6 +319,18 @@ const VIDEO_EXT: Record<string, string> = {
 };
 const MAX_UPLOAD = 100 * 1024 * 1024; // 100 MB
 
+/** Where each kind of media is stored. */
+export type UploadBackend = "supabase" | "r2";
+
+/**
+ * Photos stay on Supabase (browser-compressed to WebP first, well under the
+ * free-plan 50 MB cap). Videos go to Cloudflare R2 when configured — its free
+ * tier allows 10 GB storage with zero egress fees, so long videos are fine.
+ */
+function backendFor(kind: "photos" | "videos"): UploadBackend {
+  return kind === "videos" && r2Configured() ? "r2" : "supabase";
+}
+
 async function ensureBucket() {
   await supabase.storage
     .createBucket("uploads", { public: true, fileSizeLimit: "100MB" })
@@ -326,16 +339,20 @@ async function ensureBucket() {
 
 /**
  * Mints a signed upload URL so the browser sends the file **directly** to
- * Supabase Storage. This bypasses the serverless request body limit (~4.5 MB
- * on Vercel), which used to make the advertised 100 MB uploads impossible.
- * The path, extension and size are validated here before any URL is issued.
+ * storage (Supabase or R2). This bypasses the serverless request body limit
+ * (~4.5 MB on Vercel), which used to make the advertised 100 MB uploads
+ * impossible. The path, extension and size are validated here before any
+ * URL is issued.
  */
 export async function createUploadUrlAction(
   id: string,
   kind: "photos" | "videos",
   contentType: string,
   size: number
-): Promise<{ path: string; signedUrl: string } | { error: string }> {
+): Promise<
+  | { path: string; signedUrl: string; backend: UploadBackend }
+  | { error: string }
+> {
   const user = await getSession();
   if (!user) return { error: "auth" };
   await getMemorial(id, user.id);
@@ -347,45 +364,68 @@ export async function createUploadUrlAction(
     return { error: "size" };
   }
 
-  await ensureBucket();
   const name = `${kind === "photos" ? "p" : "v"}-${randomBytes(9).toString("hex")}.${ext}`;
   const path = `${id}/${name}`;
+  const backend = backendFor(kind);
 
+  if (backend === "r2") {
+    return { path, signedUrl: r2SignedUrl("PUT", path, 3600), backend };
+  }
+
+  await ensureBucket();
   const { data, error } = await supabase.storage
     .from("uploads")
     .createSignedUploadUrl(path);
   if (error || !data?.signedUrl) return { error: "upload" };
-  return { path: data.path, signedUrl: data.signedUrl };
+  return { path: data.path, signedUrl: data.signedUrl, backend };
+}
+
+/** Converts a stored object path to its public URL for the given backend. */
+async function publicUrlFor(
+  backend: UploadBackend,
+  path: string
+): Promise<string | null> {
+  if (backend === "r2") {
+    return (await r2Exists(path)) ? r2PublicUrl(path) : null;
+  }
+  const slash = path.indexOf("/");
+  const folder = path.slice(0, slash);
+  const name = path.slice(slash + 1);
+  const { data: existing } = await supabase.storage
+    .from("uploads")
+    .list(folder, { limit: 1000 });
+  const found = (existing ?? []).some((f) => f.name === name);
+  if (!found) return null;
+  return supabase.storage.from("uploads").getPublicUrl(path).data.publicUrl;
 }
 
 /**
- * Called after the client finished uploading directly to Storage. Verifies the
- * files really exist in this memorial's folder, then records their public URLs.
+ * Called after the client finished uploading directly to storage. Verifies the
+ * files really exist, then records their public URLs.
  */
 export async function finalizeUploadAction(
   id: string,
   kind: "photos" | "videos",
-  paths: string[]
+  uploads: { path: string; backend: UploadBackend }[]
 ): Promise<{ urls: string[]; error?: string }> {
   const user = await getSession();
   if (!user) return { urls: [], error: "auth" };
   const memorial = await getMemorial(id, user.id);
-  if (!Array.isArray(paths) || paths.length === 0) {
+  if (!Array.isArray(uploads) || uploads.length === 0) {
     return { urls: [], error: "empty" };
   }
 
-  // Only accept files that actually exist inside this memorial's folder.
-  const { data: existing } = await supabase.storage
-    .from("uploads")
-    .list(id, { limit: 1000 });
-  const existingNames = new Set((existing ?? []).map((f) => f.name));
-  const validPaths = paths.filter(
-    (p) => p.startsWith(`${id}/`) && existingNames.has(p.slice(id.length + 1))
-  );
-  if (validPaths.length === 0) return { urls: [], error: "empty" };
-
-  const bucket = supabase.storage.from("uploads");
-  const urls = validPaths.map((p) => bucket.getPublicUrl(p).data.publicUrl);
+  // Only accept objects that actually exist and belong to this memorial.
+  const urls: string[] = [];
+  for (const u of uploads) {
+    if (!u || typeof u.path !== "string" || !u.path.startsWith(`${id}/`)) {
+      continue;
+    }
+    if (u.backend !== "supabase" && u.backend !== "r2") continue;
+    const url = await publicUrlFor(u.backend, u.path);
+    if (url) urls.push(url);
+  }
+  if (urls.length === 0) return { urls: [], error: "empty" };
 
   const current = parseList(memorial[kind]);
   const merged = [...current, ...urls.filter((u) => !current.includes(u))];
@@ -403,6 +443,23 @@ export async function removeMediaAction(
   const memorial = await getMemorial(id, user.id);
   const current = parseList(memorial[kind]).filter((u) => u !== url);
   await supabase.from("memorials").update({ [kind]: JSON.stringify(current) }).eq("id", id);
+
+  // Best-effort removal of the underlying object (public URLs embed the path).
+  try {
+    const base = supabase.storage.from("uploads").getPublicUrl("").data.publicUrl;
+    if (url.startsWith(base)) {
+      const path = url.slice(base.length);
+      if (path.startsWith(`${id}/`)) {
+        await supabase.storage.from("uploads").remove([path]);
+      }
+    } else {
+      const r2Key = r2KeyFromUrl(url);
+      if (r2Key?.startsWith(`${id}/`)) await r2Delete(r2Key);
+    }
+  } catch {
+    // orphan objects cost nothing; never fail the UI over cleanup
+  }
+
   return { urls: current };
 }
 
