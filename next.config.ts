@@ -2,28 +2,10 @@ import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
 
-// Content-Security-Policy.
-// - script-src needs 'unsafe-inline' for Next.js App Router hydration and
-//   'unsafe-eval' only in dev (Turbopack/HMR). Once you adopt CSP nonces via
-//   middleware, drop both.
-// - img/media/connect allow self + https so Supabase Storage and Backblaze B2
-//   media (presigned URLs) keep working.
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "media-src 'self' blob: https:",
-  "font-src 'self' data:",
-  "connect-src 'self' https: wss:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join("; ");
-
+// Static security headers. CSP is NOT set here — it needs a per-request
+// nonce, so it is generated in src/proxy.ts (middleware) instead. Setting
+// CSP in both places would produce conflicting duplicate headers.
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
