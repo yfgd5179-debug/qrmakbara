@@ -5,6 +5,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { generateStory } from "./ai";
 import {
+  createAdminSession,
+  destroyAdminSession,
+  isAdmin,
+  verifyAdminKey,
+} from "./admin";
+import {
   createSession,
   destroySession,
   getSession,
@@ -545,15 +551,34 @@ export async function placeOrderAction(
   return { orderId: id, slug: memorial.slug };
 }
 
+const ORDER_STATUSES = ["pending", "paid", "shipped", "delivered", "cancelled"];
+
+export async function adminLoginAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const key = String(formData.get("key") ?? "");
+  if (!verifyAdminKey(key)) return { error: "key" };
+  await createAdminSession();
+  return null;
+}
+
+export async function adminLogoutAction(lang?: string): Promise<void> {
+  await destroyAdminSession();
+  const target = hasLocale(lang ?? "") ? lang! : "ar";
+  redirect(`/${target}/admin`);
+}
+
+/**
+ * Updates an order's status. Authorization comes from the signed admin
+ * cookie — the key itself is never sent from the client.
+ */
 export async function adminSetOrderStatusAction(
   orderId: string,
-  status: Order["status"],
-  adminKey: string
+  status: Order["status"]
 ): Promise<{ ok: true } | { error: string }> {
-  const expected =
-    process.env.ADMIN_KEY ??
-    (process.env.NODE_ENV !== "production" ? "admin123" : "");
-  if (adminKey !== expected || !expected) return { error: "key" };
+  if (!ORDER_STATUSES.includes(status)) return { error: "status" };
+  if (!(await isAdmin())) return { error: "auth" };
   await supabase.from("orders").update({ status }).eq("id", orderId);
   revalidatePath("/[lang]/admin", "page");
   return { ok: true };

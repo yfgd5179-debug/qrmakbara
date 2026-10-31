@@ -53,7 +53,7 @@ export type Order = {
   payment_method: "cash" | "card" | "online";
   amount: number;
   currency: string;
-  status: "pending" | "paid" | "shipped";
+  status: "pending" | "paid" | "shipped" | "delivered" | "cancelled";
   created_at: string;
 };
 

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { QrBox } from "@/components/QrBox";
 import { logoutAction } from "@/lib/actions";
 import { getSession } from "@/lib/auth";
+import { orderStatusBadge, orderStatusLabel } from "@/lib/commerce";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase } from "@/lib/db";
 import type { Memorial, Order } from "@/lib/types";
@@ -166,19 +167,9 @@ export default async function DashboardPage({
                     </td>
                     <td className="p-3">
                       <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${
-                          o.status === "paid"
-                            ? "bg-emerald-500/15 text-emerald-300"
-                            : o.status === "shipped"
-                              ? "bg-sky-500/15 text-sky-300"
-                              : "bg-amber-500/15 text-amber-300"
-                        }`}
+                        className={`rounded-full px-2 py-0.5 text-xs ${orderStatusBadge(o.status)}`}
                       >
-                        {o.status === "paid"
-                          ? dict.admin.paid
-                          : o.status === "shipped"
-                            ? dict.admin.shipped
-                            : dict.admin.pending}
+                        {orderStatusLabel(o.status, dict.admin)}
                       </span>
                     </td>
                     <td className="p-3 text-slate-500" dir="ltr">

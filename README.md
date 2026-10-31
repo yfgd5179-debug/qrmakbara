@@ -20,7 +20,9 @@ QR kod üretilir ve plaka üzerine basılmak üzere indirilir.
   online (demo ödeme, gerçek ücret çekilmez)
 - **QR kod**: Yüksek kaliteli PNG (2048px) ve SVG indirme — plaka kazıma için
 - **Halka açık anı sayfası**: `/m/<slug>` (QR bu adresi gösterir), hikaye + galeri + videolar
-- **Yönetim paneli**: `/ar/admin?key=admin123` — siparişler, durum güncelleme,
+- **Yönetim paneli**: `/ar/admin` — güvenli giriş (anahtar URL'de değil, imzalı
+  httpOnly çerez), sipariş arama + durum filtresi, tek tıkla durum güncelleme
+  (bekliyor/ödendi/kargolandı/teslim/iptal), ciro özeti, CSV dışa aktarma,
   anı sayfaları ve kullanıcılar
 
 ## Kurulum
