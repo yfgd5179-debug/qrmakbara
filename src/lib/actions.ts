@@ -1,6 +1,6 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { generateStory } from "./ai";
@@ -128,13 +128,44 @@ async function sendResetEmail(email: string, code: string): Promise<boolean> {
   }
 }
 
+/**
+ * In-memory rate limiter. Per-instance (resets on cold start / across
+ * serverless instances), but enough to blunt brute-force attempts.
+ */
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const MAX_RESET_REQUESTS = 3; // per email per window
+const MAX_CODE_ATTEMPTS = 5; // verification tries per email per window
+const resetRequests = new Map<string, number[]>();
+const codeAttempts = new Map<string, number[]>();
+
+function tooMany(key: string, map: Map<string, number[]>, max: number): boolean {
+  const now = Date.now();
+  const hits = (map.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (hits.length >= max) {
+    map.set(key, hits);
+    return true;
+  }
+  hits.push(now);
+  map.set(key, hits);
+  return false;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
+
 export async function requestResetAction(
   _prev: FormState,
   formData: FormData
-): Promise<FormState & { code?: string } | FormState> {
+): Promise<FormState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const lang = String(formData.get("lang") ?? "ar");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "email" };
+  if (tooMany(email, resetRequests, MAX_RESET_REQUESTS)) {
+    return { error: "rate" };
+  }
 
   const { data: row } = await supabase
     .from("users")
@@ -144,7 +175,7 @@ export async function requestResetAction(
 
   // Always respond success to avoid leaking which emails exist.
   if (row) {
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = String(randomInt(100000, 1000000));
     const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     await supabase
       .from("users")
@@ -152,8 +183,11 @@ export async function requestResetAction(
       .eq("id", (row as { id: string }).id);
     const sent = await sendResetEmail(email, code);
     if (!sent) {
-      // Dev fallback: return the code so it can be shown on screen.
-      return { error: undefined, code } as FormState & { code: string };
+      // Email delivery is not configured. The code is NEVER returned to the
+      // client — log it server-side for local development only.
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[reset] RESEND_API_KEY missing/failed. Code for ${email}: ${code}`);
+      }
     }
   }
   return { error: undefined } as FormState;
@@ -167,6 +201,9 @@ export async function resetPasswordAction(
   const code = String(formData.get("code") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   if (password.length < 6) return { error: "password" };
+  if (tooMany(email, codeAttempts, MAX_CODE_ATTEMPTS)) {
+    return { error: "invalidCode" };
+  }
 
   const { data: row } = await supabase
     .from("users")
@@ -175,7 +212,9 @@ export async function resetPasswordAction(
     .maybeSingle();
   if (!row) return { error: "invalidCode" };
   const r = row as { reset_code: string | null; reset_expires: string | null };
-  if (!r.reset_code || r.reset_code !== code) return { error: "invalidCode" };
+  if (!r.reset_code || !safeEqual(r.reset_code, code)) {
+    return { error: "invalidCode" };
+  }
   if (!r.reset_expires || new Date(r.reset_expires).getTime() < Date.now()) {
     return { error: "invalidCode" };
   }
@@ -280,42 +319,76 @@ const VIDEO_EXT: Record<string, string> = {
 const MAX_UPLOAD = 100 * 1024 * 1024; // 100 MB
 
 async function ensureBucket() {
-  await supabase.storage.createBucket("uploads", { public: true }).catch(() => {});
+  await supabase.storage
+    .createBucket("uploads", { public: true, fileSizeLimit: "100MB" })
+    .catch(() => {});
 }
 
-export async function uploadMediaAction(
+/**
+ * Mints a signed upload URL so the browser sends the file **directly** to
+ * Supabase Storage. This bypasses the serverless request body limit (~4.5 MB
+ * on Vercel), which used to make the advertised 100 MB uploads impossible.
+ * The path, extension and size are validated here before any URL is issued.
+ */
+export async function createUploadUrlAction(
   id: string,
   kind: "photos" | "videos",
-  formData: FormData
+  contentType: string,
+  size: number
+): Promise<{ path: string; signedUrl: string } | { error: string }> {
+  const user = await getSession();
+  if (!user) return { error: "auth" };
+  await getMemorial(id, user.id);
+
+  const extMap = kind === "photos" ? IMAGE_EXT : VIDEO_EXT;
+  const ext = extMap[contentType];
+  if (!ext) return { error: "type" };
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_UPLOAD) {
+    return { error: "size" };
+  }
+
+  await ensureBucket();
+  const name = `${kind === "photos" ? "p" : "v"}-${randomBytes(9).toString("hex")}.${ext}`;
+  const path = `${id}/${name}`;
+
+  const { data, error } = await supabase.storage
+    .from("uploads")
+    .createSignedUploadUrl(path);
+  if (error || !data?.signedUrl) return { error: "upload" };
+  return { path: data.path, signedUrl: data.signedUrl };
+}
+
+/**
+ * Called after the client finished uploading directly to Storage. Verifies the
+ * files really exist in this memorial's folder, then records their public URLs.
+ */
+export async function finalizeUploadAction(
+  id: string,
+  kind: "photos" | "videos",
+  paths: string[]
 ): Promise<{ urls: string[]; error?: string }> {
   const user = await getSession();
   if (!user) return { urls: [], error: "auth" };
   const memorial = await getMemorial(id, user.id);
-
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File);
-  if (files.length === 0) return { urls: [], error: "empty" };
-
-  const extMap = kind === "photos" ? IMAGE_EXT : VIDEO_EXT;
-  await ensureBucket();
-
-  const urls: string[] = [];
-  for (const file of files) {
-    const ext = extMap[file.type];
-    if (!ext) return { urls, error: "type" };
-    if (file.size > MAX_UPLOAD) return { urls, error: "size" };
-    const name = `${kind === "photos" ? "p" : "v"}-${randomBytes(6).toString("hex")}.${ext}`;
-    const path = `${id}/${name}`;
-    const buf = Buffer.from(await file.arrayBuffer());
-    const { error: upErr } = await supabase.storage
-      .from("uploads")
-      .upload(path, buf, { contentType: file.type, upsert: false });
-    if (upErr) return { urls, error: "upload" };
-    const { data } = supabase.storage.from("uploads").getPublicUrl(path);
-    urls.push(data.publicUrl);
+  if (!Array.isArray(paths) || paths.length === 0) {
+    return { urls: [], error: "empty" };
   }
 
+  // Only accept files that actually exist inside this memorial's folder.
+  const { data: existing } = await supabase.storage
+    .from("uploads")
+    .list(id, { limit: 1000 });
+  const existingNames = new Set((existing ?? []).map((f) => f.name));
+  const validPaths = paths.filter(
+    (p) => p.startsWith(`${id}/`) && existingNames.has(p.slice(id.length + 1))
+  );
+  if (validPaths.length === 0) return { urls: [], error: "empty" };
+
+  const bucket = supabase.storage.from("uploads");
+  const urls = validPaths.map((p) => bucket.getPublicUrl(p).data.publicUrl);
+
   const current = parseList(memorial[kind]);
-  const merged = [...current, ...urls];
+  const merged = [...current, ...urls.filter((u) => !current.includes(u))];
   await supabase.from("memorials").update({ [kind]: JSON.stringify(merged) }).eq("id", id);
   return { urls: merged };
 }

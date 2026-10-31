@@ -38,6 +38,7 @@ http://localhost:3000 adresini açın (otomatik olarak dilinize yönlendirilir).
 ADMIN_KEY=admin123        # yönetim paneli anahtarı
 GROQ_API_KEY=...          # isteğe bağlı, ücretsiz Groq anahtarı
 GEMINI_API_KEY=...        # isteğe bağlı, ücretsiz Gemini anahtarı
+RESEND_API_KEY=...        # şifre sıfırlama e-postaları için (ücretsiz resend.com)
 ```
 
 ## Yayına alma

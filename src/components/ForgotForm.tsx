@@ -12,15 +12,16 @@ export function ForgotForm({
 }) {
   const t = (dict as { auth: Record<string, string> }).auth;
   const [state, formAction, pending] = useActionState(requestResetAction, null);
-  const code = (state as (FormState & { code?: string }) | null)?.code;
+  const err = state && "error" in state ? state.error : undefined;
+  const errorMessage =
+    err === "rate" ? t.rateLimit : err === "email" ? t.invalidEmail : t.invalidCode;
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="card p-8">
         <h1 className="text-2xl font-bold text-white">{t.forgotTitle}</h1>
-        {state && !state.error && (
+        {state && !err && (
           <div className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
             <p>{t.forgotSent}</p>
-            {code && <p className="mt-1 font-mono">Dev code: {code}</p>}
             <p className="mt-2">
               <a href={`/${lang}/reset`} className="text-gold underline">
                 {t.resetTitle} →
@@ -28,9 +29,9 @@ export function ForgotForm({
             </p>
           </div>
         )}
-        {state?.error && (
+        {err && (
           <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {state.error}
+            {errorMessage}
           </p>
         )}
         <form action={formAction} className="mt-6 space-y-4">

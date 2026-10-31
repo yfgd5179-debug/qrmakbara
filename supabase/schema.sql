@@ -64,6 +64,7 @@ create table if not exists orders (
 );
 
 -- Storage bucket for uploads (run once). The app also tries to create it.
-insert into storage.buckets (id, name, public)
-values ('uploads', 'uploads', true)
+-- 100 MB file limit matches MAX_UPLOAD in src/lib/actions.ts.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('uploads', 'uploads', true, 104857600)
 on conflict (id) do nothing;

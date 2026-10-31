@@ -96,6 +96,8 @@ export const en = {
     resetCode: "Reset code",
     newPassword: "New password",
     invalidCode: "Invalid or expired code.",
+    invalidEmail: "Please enter a valid email address.",
+    rateLimit: "Too many attempts. Please wait a few minutes and try again.",
     invalid: "Incorrect email or password.",
     exists: "An account with this email already exists.",
     welcome: "Welcome back!",

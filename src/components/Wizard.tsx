@@ -4,11 +4,12 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   createMemorialAction,
+  createUploadUrlAction,
+  finalizeUploadAction,
   generateStoryAction,
   placeOrderAction,
   removeMediaAction,
   updateMemorialAction,
-  uploadMediaAction,
 } from "@/lib/actions";
 import {
   formatPrice,
@@ -100,6 +101,7 @@ export function Wizard({ lang, dict, user }: Props) {
       method: w.errMethod,
       card: w.errCard,
       empty: w.errUpload,
+      upload: w.errUpload,
       type: w.errUploadType,
       size: w.errUploadSize,
       lang: c.error,
@@ -159,9 +161,34 @@ export function Wizard({ lang, dict, user }: Props) {
     setError(null);
     setUploading(true);
     try {
-      const fd = new FormData();
-      for (const f of Array.from(files)) fd.append("files", f);
-      const res = await uploadMediaAction(id, kind, fd);
+      const list = Array.from(files);
+      const maxExt = kind === "photos" ? "image/" : "video/";
+
+      for (const f of list) {
+        // Fast local checks before asking the server for upload URLs.
+        if (!f.type.startsWith(maxExt)) return fail("type");
+        if (f.size > 100 * 1024 * 1024) return fail("size");
+      }
+
+      const paths: string[] = [];
+      for (const f of list) {
+        // 1) Server validates ownership/type/size and mints a signed URL.
+        const ticket = await createUploadUrlAction(id, kind, f.type, f.size);
+        if ("error" in ticket) return fail(ticket.error);
+
+        // 2) Browser uploads the file straight to Supabase Storage — the
+        //    request never passes through the (4.5 MB-limited) server.
+        const put = await fetch(ticket.signedUrl, {
+          method: "PUT",
+          headers: { "content-type": f.type },
+          body: f,
+        });
+        if (!put.ok) return fail("upload");
+        paths.push(ticket.path);
+      }
+
+      // 3) Server verifies the files exist and records their public URLs.
+      const res = await finalizeUploadAction(id, kind, paths);
       if (res.error) return fail(res.error);
       if (kind === "photos") setPhotos(res.urls);
       else setVideos(res.urls);

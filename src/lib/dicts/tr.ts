@@ -98,6 +98,8 @@ export const tr: Dict = {
     resetCode: "Sıfırlama kodu",
     newPassword: "Yeni şifre",
     invalidCode: "Geçersiz veya süresi dolmuş kod.",
+    invalidEmail: "Lütfen geçerli bir e-posta adresi girin.",
+    rateLimit: "Çok fazla deneme yaptınız. Birkaç dakika bekleyip tekrar deneyin.",
     invalid: "E-posta veya şifre hatalı.",
     exists: "Bu e-posta ile bir hesap zaten var.",
     welcome: "Tekrar hoş geldiniz!",
