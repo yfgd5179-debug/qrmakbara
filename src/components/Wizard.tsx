@@ -126,6 +126,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
       type: w.errUploadType,
       size: w.errUploadSize,
       lang: c.error,
+      rate: dict.auth.rateLimit,
     };
     setError(map[code] ?? c.error);
   }

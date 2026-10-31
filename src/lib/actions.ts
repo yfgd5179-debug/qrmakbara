@@ -20,6 +20,7 @@ import {
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { supabase, newId, parseList } from "./db";
 import { hasLocale } from "./dict";
+import { hit, clientIp } from "./ratelimit";
 import { s3CanonicalUrl, s3Configured, s3Delete, s3Exists, s3KeyFromUrl, s3SignedUrl } from "./s3";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
 
@@ -65,6 +66,9 @@ export async function registerAction(
   if (password.length < 6) return { error: "password" };
   if (!name) return { error: "name" };
 
+  // Cap sign-ups per IP to slow bulk account creation.
+  if (hit(`register:ip:${await clientIp()}`, 10)) return { error: "rate" };
+
   const { data: exists } = await supabase
     .from("users")
     .select("id")
@@ -94,11 +98,36 @@ export async function loginAction(
   const password = String(formData.get("password") ?? "");
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
-  const { data: row } = await supabase
+
+  if (!identifier || !password) return { error: "invalid" };
+
+  // Throttle brute-force: per identifier+IP, plus a looser per-IP cap.
+  const ip = await clientIp();
+  if (
+    hit(`login:id:${identifier.toLowerCase()}`, 10) ||
+    hit(`login:ip:${ip}`, 30)
+  ) {
+    return { error: "rate" };
+  }
+
+  // Never interpolate user input into a PostgREST `.or()` filter string —
+  // that is a filter-injection vector. Use two parameterized `.eq()`
+  // lookups instead (supabase-js URL-encodes values safely).
+  const { data: byEmail } = await supabase
     .from("users")
     .select("*")
-    .or(`email.eq.${identifier.toLowerCase()},phone.eq.${identifier}`)
+    .eq("email", identifier.toLowerCase())
     .maybeSingle();
+  let row = byEmail;
+  if (!row) {
+    const { data: byPhone } = await supabase
+      .from("users")
+      .select("*")
+      .eq("phone", identifier)
+      .maybeSingle();
+    row = byPhone;
+  }
+
   if (!row || !verifyPassword(password, (row as { password_hash: string }).password_hash)) {
     return { error: "invalid" };
   }
@@ -481,6 +510,9 @@ export async function generateStoryAction(
   const memorial = await getMemorial(id, user.id);
   if (!hasLocale(lang)) return { error: "lang" };
 
+  // Cap AI generations per user (pollinations is free but still worth capping).
+  if (hit(`ai:${user.id}`, 20)) return { error: "rate" };
+
   const result = await generateStory(memorial, lang);
   await supabase
     .from("memorials")
@@ -558,6 +590,8 @@ export async function adminLoginAction(
   formData: FormData
 ): Promise<FormState> {
   const key = String(formData.get("key") ?? "");
+  // Cap admin key attempts per IP to blunt brute-force.
+  if (hit(`admin:ip:${await clientIp()}`, 10)) return { error: "rate" };
   if (!verifyAdminKey(key)) return { error: "key" };
   await createAdminSession();
   return null;

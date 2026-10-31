@@ -99,6 +99,21 @@ S3_BUCKET=uploads
 > değişkenleriyle R2 endpoint'ini (`https://<accountid>.r2.cloudflarestorage.com`,
 > bölge `auto`) vermeniz yeterli — ayrıca kart gerektirir.
 
+## Güvenlik
+
+- **Yönetici girişi**: `?key=` URL parametresi yerine imzalı, `httpOnly`
+  çerez (HMAC-SHA256, 12 saat) — anahtar URL'de/loglarda görünmez.
+- **Giriş sorgusu**: PostgREST filtre enjeksiyonuna karşı kullanıcı girdisi
+  asla `.or()` filtre dizesine eklenmez; iki ayrı, parametreli `.eq()` ile
+  aranır.
+- **Rate-limiting** (`src/lib/ratelimit.ts`): login, kayıt, admin girişi,
+  şifre sıfırlama ve AI hikâye üretimi IP/nöz/user başına sınırlanır
+  (bellek-içi, instance başına).
+- **Security headers** (`next.config.ts`): CSP, `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, üretimde HSTS.
+- **Çerezler**: oturum + admin çerezleri `httpOnly`, `SameSite=Lax`,
+  üretimde `secure`.
+
 ## Yayına alma
 
 ```powershell

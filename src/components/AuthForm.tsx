@@ -27,6 +27,7 @@ export function AuthForm({
     email: t.invalid,
     password: t.invalid,
     name: t.fullName,
+    rate: t.rateLimit,
   };
   const errorText = state?.error ? errors[state.error] : null;
 

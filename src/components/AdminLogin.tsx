@@ -16,9 +16,9 @@ export function AdminLogin({ dict, lang }: { dict: Dict; lang: string }) {
     <div className="mx-auto max-w-sm px-4 py-20">
       <div className="card p-8">
         <h1 className="text-xl font-bold text-white">{t.title}</h1>
-        {state?.error === "key" && (
+        {state?.error && (
           <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {t.invalidKey}
+            {state.error === "rate" ? dict.auth.rateLimit : t.invalidKey}
           </p>
         )}
         <form action={formAction} className="mt-4 space-y-3">
