@@ -4,6 +4,7 @@ import { Gallery } from "@/components/Gallery";
 import { getSession } from "@/lib/auth";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase, parseList } from "@/lib/db";
+import { playbackUrl } from "@/lib/s3";
 import type { Memorial } from "@/lib/types";
 
 export async function generateMetadata({
@@ -47,7 +48,9 @@ export default async function MemorialPage({
 
   const t = dict.memorial;
   const photos = parseList(memorial.photos);
-  const videos = parseList(memorial.videos);
+  // S3/B2 videos are stored in a private bucket: mint a short-lived presigned
+  // GET URL on every render. Supabase (and public-CDN) URLs pass through.
+  const videos = parseList(memorial.videos).map(playbackUrl);
   const paragraphs = memorial.story.split(/\n{2,}/).filter((p) => p.trim());
 
   const lifespan =

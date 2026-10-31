@@ -178,14 +178,14 @@ export function Wizard({ lang, dict, user }: Props) {
         if (f.size > 100 * 1024 * 1024) return fail("size");
       }
 
-      const uploads: { path: string; backend: "supabase" | "r2" }[] = [];
+      const uploads: { path: string; backend: "supabase" | "s3" }[] = [];
       for (const f of prepared) {
         // 1) Server validates ownership/type/size and mints a signed URL.
         const ticket = await createUploadUrlAction(id, kind, f.type, f.size);
         if ("error" in ticket) return fail(ticket.error);
 
         // 2) Browser uploads the file straight to storage (Supabase for
-        //    photos, Cloudflare R2 for videos) — the request never passes
+        //    photos, Backblaze B2 for videos) — the request never passes
         //    through the (4.5 MB-limited) server.
         const put = await fetch(ticket.signedUrl, {
           method: "PUT",

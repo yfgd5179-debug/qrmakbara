@@ -14,7 +14,7 @@ import {
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { supabase, newId, parseList } from "./db";
 import { hasLocale } from "./dict";
-import { r2Configured, r2Delete, r2Exists, r2KeyFromUrl, r2PublicUrl, r2SignedUrl } from "./r2";
+import { s3CanonicalUrl, s3Configured, s3Delete, s3Exists, s3KeyFromUrl, s3SignedUrl } from "./s3";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -320,15 +320,16 @@ const VIDEO_EXT: Record<string, string> = {
 const MAX_UPLOAD = 100 * 1024 * 1024; // 100 MB
 
 /** Where each kind of media is stored. */
-export type UploadBackend = "supabase" | "r2";
+export type UploadBackend = "supabase" | "s3";
 
 /**
  * Photos stay on Supabase (browser-compressed to WebP first, well under the
- * free-plan 50 MB cap). Videos go to Cloudflare R2 when configured — its free
- * tier allows 10 GB storage with zero egress fees, so long videos are fine.
+ * free-plan 50 MB cap). Videos go to S3-compatible storage (Backblaze B2
+ * private bucket — no credit card required) when configured: 10 GB free,
+ * so long videos are fine.
  */
 function backendFor(kind: "photos" | "videos"): UploadBackend {
-  return kind === "videos" && r2Configured() ? "r2" : "supabase";
+  return kind === "videos" && s3Configured() ? "s3" : "supabase";
 }
 
 async function ensureBucket() {
@@ -339,7 +340,7 @@ async function ensureBucket() {
 
 /**
  * Mints a signed upload URL so the browser sends the file **directly** to
- * storage (Supabase or R2). This bypasses the serverless request body limit
+ * storage (Supabase or S3/B2). This bypasses the serverless request body limit
  * (~4.5 MB on Vercel), which used to make the advertised 100 MB uploads
  * impossible. The path, extension and size are validated here before any
  * URL is issued.
@@ -368,8 +369,8 @@ export async function createUploadUrlAction(
   const path = `${id}/${name}`;
   const backend = backendFor(kind);
 
-  if (backend === "r2") {
-    return { path, signedUrl: r2SignedUrl("PUT", path, 3600), backend };
+  if (backend === "s3") {
+    return { path, signedUrl: s3SignedUrl("PUT", path, 3600), backend };
   }
 
   await ensureBucket();
@@ -385,8 +386,10 @@ async function publicUrlFor(
   backend: UploadBackend,
   path: string
 ): Promise<string | null> {
-  if (backend === "r2") {
-    return (await r2Exists(path)) ? r2PublicUrl(path) : null;
+  if (backend === "s3") {
+    // Private bucket: verify with a presigned HEAD, store the canonical
+    // (unsigned) URL — playback URLs are minted per render by the page.
+    return (await s3Exists(path)) ? s3CanonicalUrl(path) : null;
   }
   const slash = path.indexOf("/");
   const folder = path.slice(0, slash);
@@ -421,7 +424,7 @@ export async function finalizeUploadAction(
     if (!u || typeof u.path !== "string" || !u.path.startsWith(`${id}/`)) {
       continue;
     }
-    if (u.backend !== "supabase" && u.backend !== "r2") continue;
+    if (u.backend !== "supabase" && u.backend !== "s3") continue;
     const url = await publicUrlFor(u.backend, u.path);
     if (url) urls.push(url);
   }
@@ -453,8 +456,8 @@ export async function removeMediaAction(
         await supabase.storage.from("uploads").remove([path]);
       }
     } else {
-      const r2Key = r2KeyFromUrl(url);
-      if (r2Key?.startsWith(`${id}/`)) await r2Delete(r2Key);
+      const s3Key = s3KeyFromUrl(url);
+      if (s3Key?.startsWith(`${id}/`)) await s3Delete(s3Key);
     }
   } catch {
     // orphan objects cost nothing; never fail the UI over cleanup

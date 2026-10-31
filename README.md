@@ -44,12 +44,14 @@ RESEND_API_KEY=...        # şifre sıfırlama e-postaları için (ücretsiz res
 NEXT_PUBLIC_SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 
-# Cloudflare R2 (isteğe bağlı, videolar için) — free plan: 10 GB, 0 egress
-R2_ACCOUNT_ID=...
-R2_ACCESS_KEY_ID=...
-R2_SECRET_ACCESS_KEY=...
-R2_BUCKET=uploads
-R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # ya da özel alan adı
+# Backblaze B2 (isteğe bağlı, videolar için) — 10 GB ücretsiz, KART İSTEMEZ
+# Özel (private) bucket + S3 API anahtarı kullanın. R2 de aynı S3_* değişkenleriyle çalışır.
+S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+S3_REGION=us-west-004
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+S3_BUCKET=uploads
+# S3_PUBLIC_BASE=...   # yalnızca PUBLIC bucket/is your CDN varsa; private bucket'ta boş bırakın
 ```
 
 ### Medya depolama nasıl çalışır?
@@ -57,29 +59,43 @@ R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # ya da özel alan adı
 - **Fotoğraflar**: tarayıcıda WebP'ye sıkıştırılır (≤2048px) → Supabase
   Storage'a doğrudan yüklenir. Sıkıştırma sayesinde 8 MB'lık telefon
   fotoğrafı ~200 KB olur; free planın 50 MB/dosya limitine takılmaz.
-- **Videolar**: R2 yapılandırıldıysa doğrudan Cloudflare R2'ye yüklenir
-  (free plan: 10 GB depolama, sıfır egress ücreti, dosya başına 5 GB'a kadar).
-  R2 anahtarları yoksa Supabase'e yüklenirler (free plan için 50 MB limitine
-  takılabilir).
+- **Videolar**: `S3_*` yapılandırıldıysa doğrudan Backblaze B2'ye yüklenir
+  (10 GB ücretsiz, kartsız kayıt, dosya başına 5 GB'a kadar; indirme
+  kotası depolamanın 3 katı/ay). Bucket **özel** olduğu için anı sayfası
+  her görüntülemede 24 saat geçerli imzalı bir oynatma URL'i üretir —
+  dosyalar asla herkese açık indirilemez. `S3_*` anahtarları yoksa
+  videolar Supabase'e yüklenir (free plan için 50 MB limitine takılabilir).
 
-### Cloudflare R2 kurumu (ücretsiz)
+### Backblaze B2 kurumu (ücretsiz, kartsız)
 
-1. https://dash.cloudflare.com → R2 → "Create bucket" (ad: `uploads`)
-2. Bucket → Settings → **Public access**'i aç (URL: `https://pub-xxxx.r2.dev`)
-3. R2 → "Manage R2 API Tokens" → "Create API token" (Object Read & Write, bucket: `uploads`)
-4. Token'ı `R2_*` env değişkenleri olarak Vercel'e ekleyin
-5. Bucket → Settings → CORS policy olarak şunu yapıştırın (tarayıcı yüklemesi için):
+1. https://www.backblaze.com → "Get Started Free" (kredi kartı istemez)
+2. B2 Cloud Storage'ı etkinleştirin → **New Bucket** (ad: `uploads`,
+   privacy: **Private** — public bucket kart/kimlik doğrulaması ister)
+3. **App Keys** → "Add a New Application Key" (sadece bu bucket'a erişim,
+   "S3 API Access" uyumlu anahtar) → `keyID` ve `applicationKey` alın
+4. Vercel'e env değişkenlerini ekleyin:
+   - `S3_ENDPOINT`: bucket sayfasındaki **S3 API Endpoint** (örn.
+     `https://s3.us-west-004.backblazeb2.com` — bölgeye göre değişir)
+   - `S3_REGION`: endpoint'teki bölge adı (örn. `us-west-004`)
+   - `S3_ACCESS_KEY_ID` = keyID, `S3_SECRET_ACCESS_KEY` = applicationKey
+   - `S3_BUCKET` = bucket adı
+5. Bucket → **CORS** ayarına şunu ekleyin (tarayıcının B2'ye PUT atabilmesi için):
 
 ```json
 [
   {
-    "AllowedOrigins": ["https://qrmakbara2.vercel.app", "http://localhost:3000"],
-    "AllowedMethods": ["PUT", "GET", "HEAD"],
-    "AllowedHeaders": ["content-type"],
-    "MaxAgeSeconds": 3600
+    "AllowedOrigin": ["https://qrmakbara2.vercel.app", "http://localhost:3000"],
+    "AllowedOperation": ["PUT", "GET", "HEAD"],
+    "AllowedHeader": ["content-type"],
+    "MaxAgeSeconds": "3600"
   }
 ]
 ```
+
+> Bucket özel olduğu için oynatma için CORS gerekmez; sadece yükleme
+> (PUT) için şarttır. Cloudflare R2 kullanmak isterseniz aynı `S3_*`
+> değişkenleriyle R2 endpoint'ini (`https://<accountid>.r2.cloudflarestorage.com`,
+> bölge `auto`) vermeniz yeterli — ayrıca kart gerektirir.
 
 ## Yayına alma
 
@@ -89,7 +105,7 @@ npm start
 ```
 
 Veritabanı Supabase (Postgres, `supabase/schema.sql`), fotoğraflar Supabase
-Storage'da, videolar (R2 yapılandırıldıysa) Cloudflare R2'de saklanır. Gerçek
+Storage'da, videolar (`S3_*` yapılandırıldıysa) Backblaze B2'de saklanır. Gerçek
 ödeme kapısı (Stripe / ZainCash vb.) sonradan `src/lib/actions.ts` içindeki
 `placeOrderAction` fonksiyonuna bağlanır.
 
@@ -100,7 +116,7 @@ Storage'da, videolar (R2 yapılandırıldıysa) Cloudflare R2'de saklanır. Ger�
 | `src/proxy.ts` | `/` dil yönlendirmesi, QR adresi `/m/<slug>` |
 | `src/lib/actions.ts` | Tüm server action'lar (kayıt, anı, yükleme, AI, sipariş) |
 | `src/lib/ai.ts` | Ücretsiz AI hikaye üretimi |
-| `src/lib/r2.ts` | Cloudflare R2 için S3 imzalı URL'ler (videolar) |
+| `src/lib/s3.ts` | S3 uyumlu depolama (Backblaze B2 / R2) imzalı URL'ler |
 | `src/lib/compress.ts` | Tarayıcıda foto sıkıştırma (WebP, ≤2048px) |
 | `src/lib/dicts/` | ar / ku / en / tr sözlükler |
 | `src/components/Wizard.tsx` | 5 adımlı sipariş sihirbazı |

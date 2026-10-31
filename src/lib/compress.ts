@@ -2,7 +2,7 @@
  * Client-side photo compression. Runs in the browser before upload so that
  * multi-megabyte camera photos become ~100-300 KB WebP files — comfortably
  * under the Supabase free-plan 50 MB/file cap and much cheaper on the
- * 5 GB/month egress quota. Videos are NOT compressed here (they go to R2).
+ * 5 GB/month egress quota. Videos are NOT compressed here (they go to S3/B2).
  *
  * Keep this module free of server-only imports: it is bundled for the client.
  */
