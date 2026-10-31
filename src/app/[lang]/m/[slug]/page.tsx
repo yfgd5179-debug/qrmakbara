@@ -21,9 +21,15 @@ export async function generateMetadata({
     .eq("slug", slug)
     .maybeSingle();
   if (!(row as { name?: string } | null)?.name) return {};
+  const name = (row as { name: string }).name;
   return {
-    title: `${(row as { name: string }).name} — ${dict.meta.title}`,
+    title: `${name} — ${dict.meta.title}`,
     description: dict.meta.description,
+    openGraph: {
+      title: `${name} — ${dict.meta.title}`,
+      description: dict.meta.description,
+      type: "profile",
+    },
   };
 }
 
@@ -51,7 +57,10 @@ export default async function MemorialPage({
   // S3/B2 videos are stored in a private bucket: mint a short-lived presigned
   // GET URL on every render. Supabase (and public-CDN) URLs pass through.
   const videos = parseList(memorial.videos).map(playbackUrl);
-  const paragraphs = memorial.story.split(/\n{2,}/).filter((p) => p.trim());
+  // Guard against a null/undefined story (column may be missing on old rows).
+  const paragraphs = (memorial.story ?? "")
+    .split(/\n{2,}/)
+    .filter((p) => p.trim());
 
   const lifespan =
     memorial.birth_year || memorial.death_year
@@ -135,7 +144,13 @@ export default async function MemorialPage({
             {t.gallery}
           </h2>
           <div className="mt-6">
-            <Gallery photos={photos} alt={memorial.name} closeLabel={dict.common.close} />
+            <Gallery
+              photos={photos}
+              alt={memorial.name}
+              closeLabel={dict.common.close}
+              prevLabel={dict.common.back}
+              nextLabel={dict.common.next}
+            />
           </div>
         </section>
       )}
@@ -151,6 +166,7 @@ export default async function MemorialPage({
                 key={src}
                 src={src}
                 controls
+                playsInline
                 preload="metadata"
                 className="w-full rounded-xl border border-slate-700 bg-black"
               />

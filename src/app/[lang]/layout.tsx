@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import "../globals.css";
 import { LangSwitcher } from "@/components/LangSwitcher";
+import { logoutAction } from "@/lib/actions";
 import { getSession } from "@/lib/auth";
 import { getDict, hasLocale, isRtl } from "@/lib/dict";
 import { LOCALES } from "@/lib/types";
@@ -37,7 +38,7 @@ export default async function RootLayout({
     <html lang={lang} dir={dir} className="h-full antialiased">
       <body className="flex min-h-screen flex-col">
         <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-40">
-          <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
             <Link
               href={`/${lang}`}
               className="text-lg font-bold tracking-tight text-slate-100"
@@ -45,7 +46,7 @@ export default async function RootLayout({
               QR <span className="text-gold">Makbara</span>
             </Link>
 
-            <nav className="ms-auto flex items-center gap-3 text-sm">
+            <nav className="ms-auto flex flex-wrap items-center gap-3 text-sm">
               <Link
                 href={`/${lang}`}
                 className="hidden text-slate-300 hover:text-white sm:inline"
@@ -67,6 +68,16 @@ export default async function RootLayout({
                 >
                   {dict.nav.create}
                 </Link>
+              )}
+              {user && (
+                <form action={logoutAction} className="inline">
+                  <button
+                    type="submit"
+                    className="text-slate-400 hover:text-white"
+                  >
+                    {dict.nav.logout}
+                  </button>
+                </form>
               )}
               {!user && (
                 <Link

@@ -208,6 +208,7 @@ export const en = {
     downloadPng: "Download PNG (print)",
     downloadSvg: "Download SVG (print)",
     copyLink: "Copy link",
+    qrError: "The QR code could not be generated. Try refreshing the page.",
     status: "Status",
     payment: "Payment",
   },

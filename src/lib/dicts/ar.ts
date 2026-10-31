@@ -207,6 +207,7 @@ export const ar: Dict = {
     downloadPng: "تنزيل PNG (للطباعة)",
     downloadSvg: "تنزيل SVG (للطباعة)",
     copyLink: "نسخ الرابط",
+    qrError: "تعذّر إنشاء رمز QR. حدّث الصفحة وحاول مجدداً.",
     status: "الحالة",
     payment: "الدفع",
   },

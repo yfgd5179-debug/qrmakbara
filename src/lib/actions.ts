@@ -539,7 +539,9 @@ export async function placeOrderAction(
     created_at: new Date().toISOString(),
   });
   await supabase.from("memorials").update({ status: "published" }).eq("id", memorial.id);
-  revalidatePath("/dashboard");
+  // The dashboard route is "/[lang]/dashboard" — a literal "/dashboard" path
+  // matches nothing and would silently skip the revalidation.
+  revalidatePath("/[lang]/dashboard", "page");
   return { orderId: id, slug: memorial.slug };
 }
 
@@ -553,6 +555,6 @@ export async function adminSetOrderStatusAction(
     (process.env.NODE_ENV !== "production" ? "admin123" : "");
   if (adminKey !== expected || !expected) return { error: "key" };
   await supabase.from("orders").update({ status }).eq("id", orderId);
-  revalidatePath("/admin");
+  revalidatePath("/[lang]/admin", "page");
   return { ok: true };
 }

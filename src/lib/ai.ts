@@ -254,7 +254,7 @@ function templateStory(m: Memorial, lang: Locale): string {
 function looksLikeLanguage(text: string, lang: Locale): boolean {
   if (lang === "ar" || lang === "ku") {
     // Sorani/Arabic use Arabic script
-    return /[\\u0600-\\u06FF]/.test(text);
+    return /[\u0600-\u06FF]/.test(text);
   }
   if (lang === "tr") {
     const lower = " " + text.toLowerCase() + " ";

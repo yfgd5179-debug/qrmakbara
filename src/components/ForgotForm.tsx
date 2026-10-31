@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { requestResetAction, type FormState } from "@/lib/actions";
+import { requestResetAction } from "@/lib/actions";
 
 export function ForgotForm({
   lang,

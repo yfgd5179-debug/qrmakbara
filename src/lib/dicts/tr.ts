@@ -209,6 +209,7 @@ export const tr: Dict = {
     downloadPng: "PNG indir (baskı)",
     downloadSvg: "SVG indir (baskı)",
     copyLink: "Bağlantıyı kopyala",
+    qrError: "QR kodu oluşturulamadı. Sayfayı yenileyip tekrar deneyin.",
     status: "Durum",
     payment: "Ödeme",
   },

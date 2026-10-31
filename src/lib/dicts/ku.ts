@@ -207,6 +207,7 @@ export const ku: Dict = {
     downloadPng: "داگرتنی PNG (بۆ چاپ)",
     downloadSvg: "داگرتنی SVG (بۆ چاپ)",
     copyLink: "بەربەرگرتنەوەی بەستەر",
+    qrError: "دروستکردنی QR سەرکەوتوو نەبوو. پەڕەکە نوێ بکەەوە و دووبارە هەوڵ بدەرەوە.",
     status: "دۆخ",
     payment: "پارەدان",
   },

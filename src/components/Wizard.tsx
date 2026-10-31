@@ -19,58 +19,78 @@ import {
 } from "@/lib/commerce";
 import { COUNTRY_CODES, type Dict } from "@/lib/dict";
 import { compressImage } from "@/lib/compress";
-import { LOCALES, type Locale } from "@/lib/types";
+import { LOCALES, type Locale, type Memorial } from "@/lib/types";
+
+/** Local JSON-array parser — avoids importing the server-only db module. */
+function parseJsonList(json: string | undefined): string[] {
+  try {
+    const v = JSON.parse(json ?? "[]");
+    return Array.isArray(v) ? (v as string[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 type Props = {
   lang: Locale;
   dict: Dict;
   user: { name: string; phone: string; country: string };
+  /** Existing memorial to continue editing (from /create?edit=<id>). */
+  initial?: Memorial | null;
 };
 
 const STEPS = 5;
 
-export function Wizard({ lang, dict, user }: Props) {
+export function Wizard({ lang, dict, user, initial }: Props) {
   const router = useRouter();
   const w = dict.wizard;
   const c = dict.common;
 
   const [step, setStep] = useState(0);
-  const [id, setId] = useState<string | null>(null);
+  // Seed with the existing record so "Manage" continues it instead of
+  // creating a duplicate on the next press of Next.
+  const [id, setId] = useState<string | null>(initial?.id ?? null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // step 0 — the person
-  const [name, setName] = useState("");
-  const [gender, setGender] = useState("");
-  const [birthYear, setBirthYear] = useState("");
-  const [deathYear, setDeathYear] = useState("");
-  const [age, setAge] = useState("");
-  const [city, setCity] = useState("");
-  const [country, setCountry] = useState(user.country || "IQ");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [gender, setGender] = useState<string>(initial?.gender ?? "");
+  const [birthYear, setBirthYear] = useState(initial?.birth_year ?? "");
+  const [deathYear, setDeathYear] = useState(initial?.death_year ?? "");
+  const [age, setAge] = useState(initial?.age ?? "");
+  const [city, setCity] = useState(initial?.city ?? "");
+  const [country, setCountry] = useState(initial?.country || user.country || "IQ");
 
   // step 1 — their life
-  const [life, setLife] = useState({
-    school: "",
-    university: "",
-    job: "",
-    marital: "",
-    children: "",
-    hobbies: "",
-    achievements: "",
-    quote: "",
-    memories: "",
+  const [life, setLife] = useState<Record<string, string>>({
+    school: initial?.school ?? "",
+    university: initial?.university ?? "",
+    job: initial?.job ?? "",
+    marital: initial?.marital ?? "",
+    children: initial?.children ?? "",
+    hobbies: initial?.hobbies ?? "",
+    achievements: initial?.achievements ?? "",
+    quote: initial?.quote ?? "",
+    memories: initial?.memories ?? "",
   });
 
   // step 2 — media
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [videos, setVideos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>(() =>
+    parseJsonList(initial?.photos)
+  );
+  const [videos, setVideos] = useState<string[]>(() =>
+    parseJsonList(initial?.videos)
+  );
   const [uploading, setUploading] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
   const videoInput = useRef<HTMLInputElement>(null);
 
   // step 3 — story
-  const [storyLang, setStoryLang] = useState<Locale>(lang);
-  const [story, setStory] = useState("");
+  const [storyLang, setStoryLang] = useState<Locale>(
+    (initial?.story_lang as Locale) || lang
+  );
+  const [story, setStory] = useState(initial?.story ?? "");
   const [provider, setProvider] = useState("");
 
   // step 4 — checkout
@@ -122,17 +142,32 @@ export function Wizard({ lang, dict, user }: Props) {
     if (!name.trim()) return fail("name");
     setBusy(true);
     try {
-      const res = await createMemorialAction({
-        name: name.trim(),
-        gender: gender as "" | "male" | "female",
-        birth_year: birthYear,
-        death_year: deathYear,
-        age: autoAge(birthYear, deathYear),
-        city,
-        country,
-      });
-      if ("error" in res) return fail(res.error);
-      setId(res.id);
+      // If we already created the record (user went back and forth between
+      // steps), update it instead of inserting a duplicate memorial.
+      if (id) {
+        const res = await updateMemorialAction(id, {
+          name: name.trim(),
+          gender: gender as "" | "male" | "female",
+          birth_year: birthYear,
+          death_year: deathYear,
+          age: autoAge(birthYear, deathYear),
+          city,
+          country,
+        });
+        if ("error" in res) return fail(res.error);
+      } else {
+        const res = await createMemorialAction({
+          name: name.trim(),
+          gender: gender as "" | "male" | "female",
+          birth_year: birthYear,
+          death_year: deathYear,
+          age: autoAge(birthYear, deathYear),
+          city,
+          country,
+        });
+        if ("error" in res) return fail(res.error);
+        setId(res.id);
+      }
       setStep(1);
       window.scrollTo({ top: 0 });
     } finally {
@@ -179,10 +214,25 @@ export function Wizard({ lang, dict, user }: Props) {
       }
 
       const uploads: { path: string; backend: "supabase" | "s3" }[] = [];
+
+      // Records whatever managed to upload before a failure, so a mid-batch
+      // error doesn't strand already-uploaded files in storage.
+      async function finishPartial() {
+        if (uploads.length === 0) return;
+        const res = await finalizeUploadAction(id!, kind, uploads);
+        if (!res.error) {
+          if (kind === "photos") setPhotos(res.urls);
+          else setVideos(res.urls);
+        }
+      }
+
       for (const f of prepared) {
         // 1) Server validates ownership/type/size and mints a signed URL.
         const ticket = await createUploadUrlAction(id, kind, f.type, f.size);
-        if ("error" in ticket) return fail(ticket.error);
+        if ("error" in ticket) {
+          await finishPartial();
+          return fail(ticket.error);
+        }
 
         // 2) Browser uploads the file straight to storage (Supabase for
         //    photos, Backblaze B2 for videos) — the request never passes
@@ -192,7 +242,10 @@ export function Wizard({ lang, dict, user }: Props) {
           headers: { "content-type": f.type },
           body: f,
         });
-        if (!put.ok) return fail("upload");
+        if (!put.ok) {
+          await finishPartial();
+          return fail("upload");
+        }
         uploads.push({ path: ticket.path, backend: ticket.backend });
       }
 
@@ -550,7 +603,8 @@ export function Wizard({ lang, dict, user }: Props) {
                       <img src={src} alt="" className="h-full w-full object-cover" />
                       <button
                         onClick={() => handleRemove("photos", src)}
-                        className="absolute end-1 top-1 rounded-full bg-black/70 px-2 py-0.5 text-xs text-white opacity-0 group-hover:opacity-100"
+                        aria-label={c.cancel}
+                        className="absolute end-1 top-1 rounded-full bg-black/70 px-2 py-0.5 text-xs text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                       >
                         ✕
                       </button>
@@ -611,10 +665,10 @@ export function Wizard({ lang, dict, user }: Props) {
                   setStep(3);
                   window.scrollTo({ top: 0 });
                 }}
-                disabled={busy}
+                disabled={busy || uploading}
                 className="btn-gold"
               >
-                {c.next}
+                {uploading ? w.uploading : c.next}
               </button>
             </div>
           </div>

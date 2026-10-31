@@ -97,7 +97,7 @@ export default async function DashboardPage({
                       </Link>
                     )}
                     <Link
-                      href={`/${lang}/create`}
+                      href={`/${lang}/create?edit=${m.id}`}
                       className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400"
                     >
                       {t.manage}
@@ -120,6 +120,7 @@ export default async function DashboardPage({
                           svg: dict.order.downloadSvg,
                           copy: dict.order.copyLink,
                           copied: dict.common.copied,
+                          error: dict.order.qrError,
                         }}
                       />
                     </div>

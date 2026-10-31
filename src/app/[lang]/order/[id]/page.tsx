@@ -95,6 +95,7 @@ export default async function OrderPage({
             svg: t.downloadSvg,
             copy: t.copyLink,
             copied: dict.common.copied,
+            error: t.qrError,
           }}
         />
       </div>

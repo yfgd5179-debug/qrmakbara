@@ -10,6 +10,7 @@ type Labels = {
   svg: string;
   copy: string;
   copied: string;
+  error: string;
 };
 
 /**
@@ -30,17 +31,25 @@ export function QrBox({
 
   useEffect(() => {
     const absolute = new URL(path, window.location.origin).toString();
-    setUrl(absolute);
     QRCode.toDataURL(absolute, {
       width: 900,
       margin: 2,
       errorCorrectionLevel: "H",
     })
-      .then(setPreview)
+      // State is only set once the async generation settles — never
+      // synchronously inside the effect body.
+      .then((dataUrl) => {
+        setUrl(absolute);
+        setPreview(dataUrl);
+        setError(false);
+      })
       .catch(() => setError(true));
   }, [path]);
 
+  const ready = !!url && !!preview;
+
   async function downloadPng() {
+    if (!ready) return;
     const dataUrl = await QRCode.toDataURL(url, {
       width: 2048,
       margin: 4,
@@ -53,6 +62,7 @@ export function QrBox({
   }
 
   async function downloadSvg() {
+    if (!ready) return;
     const svg = await QRCode.toString(url, {
       type: "svg",
       margin: 4,
@@ -67,6 +77,7 @@ export function QrBox({
   }
 
   async function copyLink() {
+    if (!ready) return;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -76,40 +87,46 @@ export function QrBox({
     }
   }
 
+  const secondaryBtn =
+    "rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400 disabled:opacity-50 disabled:hover:border-slate-600";
+
   return (
     <div className="card p-6 text-center">
       <h3 className="font-bold text-white">{labels.title}</h3>
       <p className="mt-1 text-sm text-slate-400">{labels.text}</p>
 
       <div className="mx-auto mt-4 w-full max-w-[280px] rounded-xl bg-white p-3">
-        {preview ? (
+        {error ? (
+          <div className="flex h-48 items-center justify-center px-3 text-sm text-red-500">
+            {labels.error}
+          </div>
+        ) : preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="QR code" className="h-auto w-full" />
         ) : (
-          <div className="flex h-48 items-center justify-center text-slate-500">
-            {error ? "…" : "…"}
-          </div>
+          <div
+            aria-hidden
+            className="mx-auto h-48 w-48 animate-pulse rounded-lg bg-slate-200"
+          />
         )}
       </div>
 
       <p dir="ltr" className="mt-3 break-all text-xs text-slate-500">
-        {url}
+        {url || "…"}
       </p>
 
       <div className="mt-4 flex flex-wrap justify-center gap-2">
-        <button onClick={downloadPng} className="btn-gold !py-2 text-sm">
+        <button
+          onClick={downloadPng}
+          disabled={!ready}
+          className="btn-gold !py-2 text-sm"
+        >
           {labels.png}
         </button>
-        <button
-          onClick={downloadSvg}
-          className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400"
-        >
+        <button onClick={downloadSvg} disabled={!ready} className={secondaryBtn}>
           {labels.svg}
         </button>
-        <button
-          onClick={copyLink}
-          className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400"
-        >
+        <button onClick={copyLink} disabled={!ready} className={secondaryBtn}>
           {copied ? labels.copied : labels.copy}
         </button>
       </div>

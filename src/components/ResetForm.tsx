@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { resetPasswordAction } from "@/lib/actions";
 
 export function ResetForm({

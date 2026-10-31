@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   loginAction,
   registerAction,
-  type FormState,
 } from "@/lib/actions";
 import { COUNTRY_CODES, type Dict } from "@/lib/dict";
 
@@ -53,12 +52,15 @@ export function AuthForm({
             <label className="label" htmlFor="email">
               {mode === "login" ? t.emailOrPhone : t.email}
             </label>
+            {/* Login accepts an email OR a phone number — type="email" would
+                block phone sign-in with a browser validation error. */}
             <input
               id="email"
               name="email"
-              type="email"
+              type={mode === "login" ? "text" : "email"}
               className="input"
               dir="ltr"
+              autoComplete={mode === "login" ? "username" : "email"}
               required
             />
           </div>
