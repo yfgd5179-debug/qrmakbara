@@ -70,14 +70,17 @@ export function playbackUrl(url: string): string {
 }
 
 /**
- * SigV4 presigned URL (region from env, payload UNSIGNED-PAYLOAD, only the
- * `host` header signed — the browser may send any content-type alongside).
+ * SigV4 presigned URL (region from env, payload UNSIGNED-PAYLOAD). The
+ * `host` header is always signed; for PUT the `contentType` is signed too —
+ * Backblaze validates a presigned PUT's Content-Type against the signature,
+ * and the uploader sends back exactly this value (`content-type: <f.type>`).
  * Max expiry is 7 days on both B2 and R2.
  */
 export function s3SignedUrl(
   method: "GET" | "PUT" | "HEAD" | "DELETE",
   key: string,
-  expiresSec = 3600
+  expiresSec = 3600,
+  contentType?: string
 ): string {
   const host = new URL(endpoint()).host;
   const region = process.env.S3_REGION!;
@@ -90,29 +93,57 @@ export function s3SignedUrl(
   const dateStamp = amzDate.slice(0, 8);
   const scope = `${dateStamp}/${region}/${service}/aws4_request`;
 
-  const canonicalUri = `/${bucket()}/${key.split("/").map(encodeURIComponent).join("/")}`;
+  // AWS UriEncode: percent-encode every byte except A-Za-z0-9-._~.
+  // encodeURIComponent also leaves !'()* alone, so re-encode those to match
+  // the canonical form AWS servers compute.
+  const awsEncode = (s: string): string =>
+    encodeURIComponent(s).replace(
+      /[!'()*]/g,
+      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+    );
+
+  const canonicalUri = `/${awsEncode(bucket())}/${key
+    .split("/")
+    .map(awsEncode)
+    .join("/")}`;
+
+  // Canonical headers (sorted by lowercase name); PUT additionally signs the
+  // content-type the browser will send with the file body (the Wizard PUTs
+  // with exactly this value, and AWS/B2 verify it against the signature).
+  const headerValues: Record<string, string> = { host };
+  if (method === "PUT" && contentType) headerValues["content-type"] = contentType;
+  const signedHeaderNames = Object.keys(headerValues).sort();
+  const canonicalHeaders = signedHeaderNames
+    .map((n) => `${n}:${headerValues[n]}\n`)
+    .join("");
+  const signedHeaders = signedHeaderNames.join(";");
 
   const query = new URLSearchParams({
     "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
     "X-Amz-Credential": `${accessKey}/${scope}`,
     "X-Amz-Date": amzDate,
     "X-Amz-Expires": String(expiresSec),
-    "X-Amz-SignedHeaders": "host",
+    "X-Amz-SignedHeaders": signedHeaders,
+    // The payload hash used in the canonical request. AWS's SDK puts this in
+    // the query as well; S3-compatible servers (B2) read it from here when
+    // the request itself carries no x-amz-content-sha256 header.
+    "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD",
   });
   // Canonical query string must be sorted by encoded key.
   const canonicalQuery = [...query.entries()]
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .map(([k, v]) => `${awsEncode(k)}=${awsEncode(v)}`)
     .sort()
     .join("&");
 
   // CanonicalHeaders ends with its own "\n" — that is what produces the blank
-  // line before SignedHeaders in the canonical request.
+  // line before SignedHeaders in the canonical request (verified against
+  // AWS's own implementation in @smithy/signature-v4).
   const canonicalRequest = [
     method,
     canonicalUri,
     canonicalQuery,
-    `host:${host}\n`,
-    "host",
+    canonicalHeaders,
+    signedHeaders,
     "UNSIGNED-PAYLOAD",
   ].join("\n");
 

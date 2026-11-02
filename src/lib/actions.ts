@@ -405,7 +405,11 @@ export async function createUploadUrlAction(
   const backend = backendFor(kind);
 
   if (backend === "s3") {
-    return { path, signedUrl: s3SignedUrl("PUT", path, 3600), backend };
+    return {
+      path,
+      signedUrl: s3SignedUrl("PUT", path, 3600, contentType),
+      backend,
+    };
   }
 
   await ensureBucket();

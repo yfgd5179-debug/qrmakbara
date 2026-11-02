@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 import { Wizard } from "@/components/Wizard";
 import { getSession } from "@/lib/auth";
 import { getDict, hasLocale } from "@/lib/dict";

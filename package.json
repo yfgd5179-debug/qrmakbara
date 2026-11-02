@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node tests/sigv4.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
@@ -16,6 +17,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@smithy/signature-v4": "^5.7.5",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^26.6.6",
     "@types/qrcode": "^1.5.6",

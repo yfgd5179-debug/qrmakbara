@@ -8,6 +8,11 @@ import { getSession } from "@/lib/auth";
 import { getDict, hasLocale, isRtl } from "@/lib/dict";
 import { LOCALES } from "@/lib/types";
 
+// Vercel: let server actions (AI story generation, Supabase writes, order
+// flow) run up to 120 s — the platform default is much lower and would cut
+// slow AI calls short. Inherited by every page under /[lang].
+export const maxDuration = 120;
+
 export async function generateStaticParams() {
   return LOCALES.map((lang) => ({ lang }));
 }

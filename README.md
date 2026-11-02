@@ -34,6 +34,9 @@ npm run dev
 
 http://localhost:3000 adresini açın (otomatik olarak dilinize yönlendirilir).
 
+`npm test` — presigned URL imzalamasını (`src/lib/s3.ts`) AWS'in resmi SigV4
+implementasyonuna karşı birebir doğrular; `s3.ts` değişikliklerinde çalıştırın.
+
 ## Yapılandırma (`.env.local`)
 
 ```bash
@@ -81,18 +84,41 @@ S3_BUCKET=uploads
    - `S3_REGION`: endpoint'teki bölge adı (örn. `us-west-004`)
    - `S3_ACCESS_KEY_ID` = keyID, `S3_SECRET_ACCESS_KEY` = applicationKey
    - `S3_BUCKET` = bucket adı
-5. Bucket → **CORS** ayarına şunu ekleyin (tarayıcının B2'ye PUT atabilmesi için):
+5. Bucket → **CORS** ayarı — tarayıcının B2'ye doğrudan PUT atabilmesi için
+   şarttır. **Önemli:** uygulama `s3.<bölge>.backblazeb2.com` (S3-uyumlu API)
+   üzerinden yükleme yaptığı için kuralın **S3-Compatible API** için geçerli
+   olduğundan emin olun.
 
-```json
-[
-  {
-    "AllowedOrigin": ["https://qrmakbara2.vercel.app", "http://localhost:3000"],
-    "AllowedOperation": ["PUT", "GET", "HEAD"],
-    "AllowedHeader": ["content-type"],
-    "MaxAgeSeconds": "3600"
-  }
-]
-```
+   **Kolay yol (web konsolu):** Bucket → Settings → **CORS Rules** →
+   "Share everything in this bucket with all HTTPS origins" (veya "every
+   origin") → API olarak **Both** (en azından *S3-compatible*) seçin → Save.
+
+   **Kapsamlı yol (S3 API, sadece izinli origin'ler):**
+
+   ```xml
+   <CORSConfiguration>
+     <CORSRule>
+       <AllowedOrigin>https://qrmakbara2.vercel.app</AllowedOrigin>
+       <AllowedOrigin>https://*.vercel.app</AllowedOrigin>
+       <AllowedOrigin>http://localhost:3000</AllowedOrigin>
+       <AllowedMethod>PUT</AllowedMethod>
+       <AllowedMethod>GET</AllowedMethod>
+       <AllowedMethod>HEAD</AllowedMethod>
+       <AllowedMethod>DELETE</AllowedMethod>
+       <AllowedHeader>content-type</AllowedHeader>
+       <MaxAgeSeconds>3600</MaxAgeSeconds>
+     </CORSRule>
+   </CORSConfiguration>
+   ```
+
+   ```powershell
+   aws s3api put-bucket-cors --endpoint-url https://s3.us-west-004.backblazeb2.com `
+     --bucket uploads --cors-configuration file://cors.xml
+   ```
+
+   > Klasik `b2 update-bucket --cors-rules` JSON'u **Native API** kuralları
+   > yazdır; tarayıcı S3-uyumlu API'ye gittiği için bu kurallar tek başına
+   > yetmez (konsolda API olarak "Both" seçmek en güvenlisi).
 
 > Bucket özel olduğu için oynatma için CORS gerekmez; sadece yükleme
 > (PUT) için şarttır. Cloudflare R2 kullanmak isterseniz aynı `S3_*`
@@ -109,8 +135,9 @@ S3_BUCKET=uploads
 - **Rate-limiting** (`src/lib/ratelimit.ts`): login, kayıt, admin girişi,
   şifre sıfırlama ve AI hikâye üretimi IP/nöz/user başına sınırlanır
   (bellek-içi, instance başına).
-- **Security headers** (`next.config.ts`): CSP, `X-Content-Type-Options`,
-  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, üretimde HSTS.
+- **Security headers**: nonce'lu strict CSP (`src/proxy.ts` üzerinden her
+  istekte üretilir), `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy` (`next.config.ts`) ve üretimde HSTS.
 - **Çerezler**: oturum + admin çerezleri `httpOnly`, `SameSite=Lax`,
   üretimde `secure`.
 
@@ -126,11 +153,38 @@ Storage'da, videolar (`S3_*` yapılandırıldıysa) Backblaze B2'de saklanır. G
 ödeme kapısı (Stripe / ZainCash vb.) sonradan `src/lib/actions.ts` içindeki
 `placeOrderAction` fonksiyonuna bağlanır.
 
+### Vercel'e deploy (ücretsiz, kartsız)
+
+1. https://vercel.com/new → GitHub repo'nuzu seçin; framework **Next.js**
+   otomatik algılanır, ek yapılandırma gerekmez.
+2. **Settings → Environment Variables** → `.env.local` bölümündeki tüm
+   değişkenleri ekleyin:
+   - zorunlu: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_KEY`
+     (üretimde `admin123` devre dışıdır — mutlaka güçlü bir değer verin)
+   - videolar için: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
+     `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`
+   - isteğe bağlı: `GROQ_API_KEY` / `GEMINI_API_KEY`, `RESEND_API_KEY`
+3. **Deploy** → build `npm run build` ile tamamlanır. Uzun süren server
+   action'lar (AI hikâye üretimi) için `maxDuration = 120`
+   (`src/app/[lang]/layout.tsx`) tanımlıdır.
+4. Üretim alan adınızı (ör. `https://qrmakbara2.vercel.app`) B2 **CORS**
+   origin listesine ekleyin (yukarıdaki B2 bölümü); PR/preview alt alan
+   adları için `https://*.vercel.app` yeterlidir.
+
+Notlar:
+
+- **Büyük dosyalar Vercel'den geçmez**: fotoğraflar tarayıcıda sıkıştırılıp
+  Supabase Storage'a, videolar tarayıcıdan doğrudan B2'ye yüklenir — bu yüzden
+  Vercel'in ~4.5 MB istek gövdesi limiti sorun olmaz.
+- Middleware (`src/proxy.ts`: dil yönlendirme, `/m/<slug>` rewrite, nonce'lu
+  CSP) Vercel'de otomatik olarak Edge'de çalışır.
+- `next.config.ts` başlıkları ve `serverActions.bodySizeLimit` aynen uygulanır.
+
 ## Ana dosyalar
 
 | Dosya | Görev |
 |---|---|
-| `src/proxy.ts` | `/` dil yönlendirmesi, QR adresi `/m/<slug>` |
+| `src/proxy.ts` | `/` dil yönlendirmesi, QR adresi `/m/<slug>`, nonce'lu CSP |
 | `src/lib/actions.ts` | Tüm server action'lar (kayıt, anı, yükleme, AI, sipariş) |
 | `src/lib/ai.ts` | Ücretsiz AI hikaye üretimi |
 | `src/lib/s3.ts` | S3 uyumlu depolama (Backblaze B2 / R2) imzalı URL'ler |
