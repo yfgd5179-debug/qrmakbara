@@ -85,69 +85,67 @@ S3_BUCKET=qrmakbarauploads
    - `S3_ACCESS_KEY_ID` = keyID, `S3_SECRET_ACCESS_KEY` = applicationKey
    - `S3_BUCKET` = bucket adı
 5. Bucket → **CORS** ayarı — tarayıcının B2'ye doğrudan PUT atabilmesi için
-   şarttır. **Önemli:** uygulama `s3.<bölge>.backblazeb2.com` (S3-uyumlu API)
-   üzerinden yükleme yaptığı için kuralın **S3-Compatible API** için geçerli
-   olduğundan emin olun.
+   şarttır. Uygulama `s3.<bölge>.backblazeb2.com` (S3-uyumlu API) üzerinden
+   yüklüyor, bu yüzden kuralda **`s3_*` operasyonları** bulunmalı.
 
-   **Kolay yol (web konsolu):** Bucket → Settings → **CORS Rules** →
-   "Share everything in this bucket with all HTTPS origins" (veya "every
-   origin") → API olarak **Both** (en azından *S3-compatible*) seçin → Save.
+   ⚠️ **Konsolun hazır seçenekleri ("Share everything in this bucket…")
+   yanıltıcıdır:** bunlar yalnızca **indirme** izni yazar (`s3_get`),
+   `s3_put` yazılmaz → yükleme preflight'i *"This CORS request is not
+   allowed"* ile 403 alır. Custom kural ayrıca konsoldan düzenlenemez;
+   **B2 Native API** ile yazılır.
 
-   **Konsolda kural yazmak için (native JSON):** CORS Rules sayfasında
-   kuralı şu şekilde girin — `allowedOperations` içindeki `s3_*` adları
-   S3-uyumlu API'yi hedefler:
+   **Doğrulanmış yol — Native API (`b2` CLI):**
 
    ```json
    [
      {
        "corsRuleName": "app-uploads",
        "allowedOrigins": [
+         "http://localhost:3000",
          "https://qrmakbara2.vercel.app",
-         "https://*.vercel.app",
-         "http://localhost:3000"
+         "https://*.vercel.app"
        ],
-       "allowedOperations": ["s3_put", "s3_get", "s3_head", "s3_delete"],
+       "allowedOperations": ["s3_get", "s3_head", "s3_put", "s3_delete"],
        "allowedHeaders": ["content-type"],
        "maxAgeSeconds": 3600
      }
    ]
    ```
 
-   > Kurulumdan sonra doğrulama (tarayıcı preflight'ı simüle eder):
-   > `curl.exe -i -X OPTIONS "https://s3.us-east-005.backblazeb2.com/qrmakbarauploads/v-test.mp4" -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: PUT" -H "Access-Control-Request-Headers: content-type"`
-   > → `access-control-allow-origin` başlığı gelmeli (403 "CORS is not
-   > enabled for this bucket" geliyorsa kural S3 API'sine uygulanmamıştır).
-
-   **Kapsamlı yol (S3 API, sadece izinli origin'ler):**
-
-   ```xml
-   <CORSConfiguration>
-     <CORSRule>
-       <AllowedOrigin>https://qrmakbara2.vercel.app</AllowedOrigin>
-       <AllowedOrigin>https://*.vercel.app</AllowedOrigin>
-       <AllowedOrigin>http://localhost:3000</AllowedOrigin>
-       <AllowedMethod>PUT</AllowedMethod>
-       <AllowedMethod>GET</AllowedMethod>
-       <AllowedMethod>HEAD</AllowedMethod>
-       <AllowedMethod>DELETE</AllowedMethod>
-       <AllowedHeader>content-type</AllowedHeader>
-       <MaxAgeSeconds>3600</MaxAgeSeconds>
-     </CORSRule>
-   </CORSConfiguration>
+   ```powershell
+   b2 bucket update --cors-rules "$(<cors-rules.json)" qrmakbarauploads allPrivate
    ```
+
+   > `bucketType` argümanını mutlaka `allPrivate` verin — public bucket
+   > kart/kimlik doğrulaması ister.
+
+   > **S3 API'siyle (`aws s3api put-bucket-cors` / XML) bu bucketta kural
+   > yazılamaz:** konsol kuralı Native API ile yazıldığı için B2
+   > *"The bucket contains B2 Native CORS rules. Please use B2 Native API
+   > instead"* hatasını döndürür. Buna karşılık Native kuraldaki `s3_*`
+   > operasyonları S3-uyumlu API preflight'larında birebir çalışır
+   > (kurulum sonrası doğrulandı: PUT/GET/HEAD/DELETE → 200, bilinmeyen
+   > origin → 403).
+
+   **Doğrulama (tarayıcı preflight'ını simüle eder):**
 
    ```powershell
-   aws s3api put-bucket-cors --endpoint-url https://s3.us-east-005.backblazeb2.com `
-     --bucket qrmakbarauploads --cors-configuration file://cors.xml
+   curl.exe -i -X OPTIONS "https://s3.us-east-005.backblazeb2.com/qrmakbarauploads/v-test.mp4" `
+     -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: PUT" `
+     -H "Access-Control-Request-Headers: content-type"
    ```
 
-   > Not: `b2 update-bucket --cors-rules` ile yazdığınız aynı JSON,
-   > `allowedOperations` içinde `s3_*` adları varsa S3-uyumlu API'de de
-   > geçerlidir (doğrulama preflight testi ile yapılmalıdır); `s3_*`
-   > yoksa yalnızca Native API'ye uygulanır ve yükleme 403 verir.
+   Beklenen: `200` + `access-control-allow-origin: http://localhost:3000` +
+   `access-control-allow-methods: PUT`. Bilinmeyen bir origin ile tekrar
+   denendiğinde **403** dönmeli (bu, kuralın doğru çalıştığının göstergesidir).
 
-> Bucket özel olduğu için oynatma için CORS gerekmez; sadece yükleme
-> (PUT) için şarttır. Cloudflare R2 kullanmak isterseniz aynı `S3_*`
+   Son uçtan uca kontrol: presigned `PUT` ile küçük bir dosya yükleyip
+   presigned `GET` ile okunmalı, presigned `DELETE` ile silinince `404`
+   vermeli.
+
+> Bucket özel olduğu için oynatma (video `GET`) için ayrıca CORS gerekmez;
+> yine de kuralda `s3_get` bulundurmak anı sayfasındaki olası tarayıcı
+> istekleri için gereklidir. Cloudflare R2 kullanmak isterseniz aynı `S3_*`
 > değişkenleriyle R2 endpoint'ini (`https://<accountid>.r2.cloudflarestorage.com`,
 > bölge `auto`) vermeniz yeterli — ayrıca kart gerektirir.
 
