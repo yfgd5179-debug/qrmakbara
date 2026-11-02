@@ -51,11 +51,11 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 # Backblaze B2 (isteğe bağlı, videolar için) — 10 GB ücretsiz, KART İSTEMEZ
 # Özel (private) bucket + S3 API anahtarı kullanın. R2 de aynı S3_* değişkenleriyle çalışır.
-S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
-S3_REGION=us-west-004
+S3_ENDPOINT=https://s3.us-east-005.backblazeb2.com
+S3_REGION=us-east-005
 S3_ACCESS_KEY_ID=...
 S3_SECRET_ACCESS_KEY=...
-S3_BUCKET=uploads
+S3_BUCKET=qrmakbarauploads
 # S3_PUBLIC_BASE=...   # yalnızca PUBLIC bucket/is your CDN varsa; private bucket'ta boş bırakın
 ```
 
@@ -74,14 +74,14 @@ S3_BUCKET=uploads
 ### Backblaze B2 kurumu (ücretsiz, kartsız)
 
 1. https://www.backblaze.com → "Get Started Free" (kredi kartı istemez)
-2. B2 Cloud Storage'ı etkinleştirin → **New Bucket** (ad: `uploads`,
+2. B2 Cloud Storage'ı etkinleştirin → **New Bucket** (ad: `qrmakbarauploads`,
    privacy: **Private** — public bucket kart/kimlik doğrulaması ister)
 3. **App Keys** → "Add a New Application Key" (sadece bu bucket'a erişim,
    "S3 API Access" uyumlu anahtar) → `keyID` ve `applicationKey` alın
 4. Vercel'e env değişkenlerini ekleyin:
    - `S3_ENDPOINT`: bucket sayfasındaki **S3 API Endpoint** (örn.
-     `https://s3.us-west-004.backblazeb2.com` — bölgeye göre değişir)
-   - `S3_REGION`: endpoint'teki bölge adı (örn. `us-west-004`)
+     `https://s3.us-east-005.backblazeb2.com` — bölgeye göre değişir)
+   - `S3_REGION`: endpoint'teki bölge adı (örn. `us-east-005`)
    - `S3_ACCESS_KEY_ID` = keyID, `S3_SECRET_ACCESS_KEY` = applicationKey
    - `S3_BUCKET` = bucket adı
 5. Bucket → **CORS** ayarı — tarayıcının B2'ye doğrudan PUT atabilmesi için
@@ -92,6 +92,31 @@ S3_BUCKET=uploads
    **Kolay yol (web konsolu):** Bucket → Settings → **CORS Rules** →
    "Share everything in this bucket with all HTTPS origins" (veya "every
    origin") → API olarak **Both** (en azından *S3-compatible*) seçin → Save.
+
+   **Konsolda kural yazmak için (native JSON):** CORS Rules sayfasında
+   kuralı şu şekilde girin — `allowedOperations` içindeki `s3_*` adları
+   S3-uyumlu API'yi hedefler:
+
+   ```json
+   [
+     {
+       "corsRuleName": "app-uploads",
+       "allowedOrigins": [
+         "https://qrmakbara2.vercel.app",
+         "https://*.vercel.app",
+         "http://localhost:3000"
+       ],
+       "allowedOperations": ["s3_put", "s3_get", "s3_head", "s3_delete"],
+       "allowedHeaders": ["content-type"],
+       "maxAgeSeconds": 3600
+     }
+   ]
+   ```
+
+   > Kurulumdan sonra doğrulama (tarayıcı preflight'ı simüle eder):
+   > `curl.exe -i -X OPTIONS "https://s3.us-east-005.backblazeb2.com/qrmakbarauploads/v-test.mp4" -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: PUT" -H "Access-Control-Request-Headers: content-type"`
+   > → `access-control-allow-origin` başlığı gelmeli (403 "CORS is not
+   > enabled for this bucket" geliyorsa kural S3 API'sine uygulanmamıştır).
 
    **Kapsamlı yol (S3 API, sadece izinli origin'ler):**
 
@@ -112,13 +137,14 @@ S3_BUCKET=uploads
    ```
 
    ```powershell
-   aws s3api put-bucket-cors --endpoint-url https://s3.us-west-004.backblazeb2.com `
-     --bucket uploads --cors-configuration file://cors.xml
+   aws s3api put-bucket-cors --endpoint-url https://s3.us-east-005.backblazeb2.com `
+     --bucket qrmakbarauploads --cors-configuration file://cors.xml
    ```
 
-   > Klasik `b2 update-bucket --cors-rules` JSON'u **Native API** kuralları
-   > yazdır; tarayıcı S3-uyumlu API'ye gittiği için bu kurallar tek başına
-   > yetmez (konsolda API olarak "Both" seçmek en güvenlisi).
+   > Not: `b2 update-bucket --cors-rules` ile yazdığınız aynı JSON,
+   > `allowedOperations` içinde `s3_*` adları varsa S3-uyumlu API'de de
+   > geçerlidir (doğrulama preflight testi ile yapılmalıdır); `s3_*`
+   > yoksa yalnızca Native API'ye uygulanır ve yükleme 403 verir.
 
 > Bucket özel olduğu için oynatma için CORS gerekmez; sadece yükleme
 > (PUT) için şarttır. Cloudflare R2 kullanmak isterseniz aynı `S3_*`
