@@ -17,11 +17,13 @@ export async function generateMetadata({
   const dict = getDict(lang);
   const { data: row } = await supabase
     .from("memorials")
-    .select("name")
+    .select("name, status")
     .eq("slug", slug)
     .maybeSingle();
-  if (!(row as { name?: string } | null)?.name) return {};
-  const name = (row as { name: string }).name;
+  const found = row as { name?: string; status?: string } | null;
+  // Never leak the name of a draft page through the <title>/OpenGraph tags.
+  if (!found?.name || found.status !== "published") return {};
+  const name = found.name;
   return {
     title: `${name} — ${dict.meta.title}`,
     description: dict.meta.description,
@@ -86,7 +88,13 @@ export default async function MemorialPage({
         )}
         {(memorial.city || memorial.country) && (
           <p className="mt-1 text-slate-400">
-            {[memorial.city, memorial.country]
+            {[
+              memorial.city,
+              // The DB stores the ISO code ("IQ"); show the reader's language.
+              dict.countries[
+                memorial.country as keyof typeof dict.countries
+              ] ?? memorial.country,
+            ]
               .filter(Boolean)
               .join(lang === "ar" || lang === "ku" ? "، " : ", ")}
           </p>

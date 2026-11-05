@@ -19,6 +19,7 @@ import {
 } from "@/lib/commerce";
 import { COUNTRY_CODES, type Dict } from "@/lib/dict";
 import { compressImage } from "@/lib/compress";
+import { MetalPlaque } from "@/components/MetalPlaque";
 import { LOCALES, type Locale, type Memorial } from "@/lib/types";
 
 /** Local JSON-array parser — avoids importing the server-only db module. */
@@ -41,6 +42,17 @@ type Props = {
 
 const STEPS = 5;
 
+/**
+ * Age at death is derived from the two years — the wizard never asks for it,
+ * so there is only one source of truth and no way to enter 70 with 1934–2005.
+ */
+function ageFromYears(birth: string, death: string): string {
+  const b = parseInt(birth, 10);
+  const d = parseInt(death, 10);
+  if (!b || !d || d < b) return "";
+  return String(d - b);
+}
+
 export function Wizard({ lang, dict, user, initial }: Props) {
   const router = useRouter();
   const w = dict.wizard;
@@ -50,6 +62,8 @@ export function Wizard({ lang, dict, user, initial }: Props) {
   // Seed with the existing record so "Manage" continues it instead of
   // creating a duplicate on the next press of Next.
   const [id, setId] = useState<string | null>(initial?.id ?? null);
+  // Slug backs the QR code on the metal plaque preview (step 5).
+  const [slug, setSlug] = useState(initial?.slug ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,7 +72,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
   const [gender, setGender] = useState<string>(initial?.gender ?? "");
   const [birthYear, setBirthYear] = useState(initial?.birth_year ?? "");
   const [deathYear, setDeathYear] = useState(initial?.death_year ?? "");
-  const [age, setAge] = useState(initial?.age ?? "");
+  const age = ageFromYears(birthYear, deathYear);
   const [city, setCity] = useState(initial?.city ?? "");
   const [country, setCountry] = useState(initial?.country || user.country || "IQ");
 
@@ -131,13 +145,6 @@ export function Wizard({ lang, dict, user, initial }: Props) {
     setError(map[code] ?? c.error);
   }
 
-  function autoAge(b: string, d: string) {
-    const by = parseInt(b, 10);
-    const dy = parseInt(d, 10);
-    if (by && dy && dy >= by) return String(dy - by);
-    return age;
-  }
-
   async function nextFromPerson() {
     setError(null);
     if (!name.trim()) return fail("name");
@@ -151,7 +158,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
           gender: gender as "" | "male" | "female",
           birth_year: birthYear,
           death_year: deathYear,
-          age: autoAge(birthYear, deathYear),
+          age,
           city,
           country,
         });
@@ -162,12 +169,21 @@ export function Wizard({ lang, dict, user, initial }: Props) {
           gender: gender as "" | "male" | "female",
           birth_year: birthYear,
           death_year: deathYear,
-          age: autoAge(birthYear, deathYear),
+          age,
           city,
           country,
         });
         if ("error" in res) return fail(res.error);
         setId(res.id);
+        setSlug(res.slug);
+        // Keep the draft id in the URL (no navigation, just the address bar)
+        // so a reload or a language switch resumes this memorial instead of
+        // silently starting a second, duplicate one.
+        window.history.replaceState(
+          null,
+          "",
+          `/${lang}/create?edit=${res.id}`
+        );
       }
       setStep(1);
       window.scrollTo({ top: 0 });
@@ -183,7 +199,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
     try {
       const res = await updateMemorialAction(id, {
         ...life,
-        age: autoAge(birthYear, deathYear),
+        age,
       });
       if ("error" in res) return fail(res.error);
       setStep(2);
@@ -392,25 +408,12 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                 </select>
               </div>
               <div>
-                <label className="label">{w.age}</label>
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  placeholder="—"
-                />
-              </div>
-              <div>
                 <label className="label">{w.birthYear}</label>
                 <input
                   className="input"
                   inputMode="numeric"
                   value={birthYear}
-                  onChange={(e) => {
-                    setBirthYear(e.target.value);
-                    setAge(autoAge(e.target.value, deathYear));
-                  }}
+                  onChange={(e) => setBirthYear(e.target.value)}
                   placeholder="1950"
                 />
               </div>
@@ -420,10 +423,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                   className="input"
                   inputMode="numeric"
                   value={deathYear}
-                  onChange={(e) => {
-                    setDeathYear(e.target.value);
-                    setAge(autoAge(birthYear, e.target.value));
-                  }}
+                  onChange={(e) => setDeathYear(e.target.value)}
                   placeholder="2024"
                 />
               </div>
@@ -450,6 +450,13 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                 </select>
               </div>
             </div>
+
+            {/* Age is never asked: it follows from the two years above. */}
+            {age && (
+              <p className="text-sm text-slate-400">
+                {w.age}: <span className="font-semibold text-slate-200">{age}</span>
+              </p>
+            )}
 
             <div className="pt-2 text-end">
               <button
@@ -878,6 +885,28 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                   {w.cardDemo}
                 </p>
               </div>
+            )}
+
+            {/* The physical plaque the order produces — same artwork as the
+                prints, so buyers see exactly what gets engraved. */}
+            {slug && (
+              <MetalPlaque
+                path={`/m/${slug}`}
+                name={name}
+                birthYear={birthYear}
+                deathYear={deathYear}
+                gender={gender}
+                lang={lang}
+                labels={{
+                  title: dict.order.qrTitle,
+                  text: dict.order.qrText,
+                  png: dict.order.downloadPng,
+                  svg: dict.order.downloadSvg,
+                  copy: dict.order.copyLink,
+                  copied: c.copied,
+                  error: dict.order.qrError,
+                }}
+              />
             )}
 
             <div className="flex items-center justify-between rounded-xl border border-gold/40 bg-gold/5 px-4 py-3">

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { QrBox } from "@/components/QrBox";
+import { MetalPlaque } from "@/components/MetalPlaque";
 import { getSession } from "@/lib/auth";
-import { orderStatusLabel } from "@/lib/commerce";
+import { formatPrice, orderStatusLabel } from "@/lib/commerce";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase } from "@/lib/db";
 import type { Memorial, Order } from "@/lib/types";
@@ -69,7 +69,7 @@ export default async function OrderPage({
           <div className="flex justify-between rounded-lg bg-slate-900/70 px-4 py-3">
             <dt className="text-slate-400">{dict.wizard.total}</dt>
             <dd className="font-bold text-gold" dir="ltr">
-              {order.amount} {order.currency}
+              {formatPrice(order.amount, order.currency)}
             </dd>
           </div>
         </dl>
@@ -83,8 +83,13 @@ export default async function OrderPage({
       </div>
 
       <div className="mt-6">
-        <QrBox
+        <MetalPlaque
           path={`/m/${memorial.slug}`}
+          name={memorial.name}
+          birthYear={memorial.birth_year}
+          deathYear={memorial.death_year}
+          gender={memorial.gender}
+          lang={lang}
           labels={{
             title: t.qrTitle,
             text: t.qrText,

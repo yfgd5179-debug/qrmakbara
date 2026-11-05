@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { requestResetAction } from "@/lib/actions";
+import { normalizePhone } from "@/lib/phone";
 
 export function ForgotForm({
   lang,
@@ -12,9 +13,10 @@ export function ForgotForm({
 }) {
   const t = (dict as { auth: Record<string, string> }).auth;
   const [state, formAction, pending] = useActionState(requestResetAction, null);
+  const [phone, setPhone] = useState("");
   const err = state && "error" in state ? state.error : undefined;
   const errorMessage =
-    err === "rate" ? t.rateLimit : err === "email" ? t.invalidEmail : t.invalidCode;
+    err === "rate" ? t.rateLimit : err === "phone" ? t.invalidPhone : t.invalidCode;
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="card p-8">
@@ -37,15 +39,26 @@ export function ForgotForm({
         <form action={formAction} className="mt-6 space-y-4">
           <input type="hidden" name="lang" value={lang} />
           <div>
-            <label className="label" htmlFor="email">{t.email}</label>
+            <label className="label" htmlFor="phone">
+              {t.phone}
+            </label>
             <input
-              id="email"
-              name="email"
-              type="email"
+              id="phone"
+              name="phone"
+              type="tel"
+              inputMode="tel"
               className="input"
               dir="ltr"
+              value={phone}
+              onChange={(e) => setPhone(normalizePhone(e.target.value))}
+              placeholder="07XX XXX XXXX"
+              pattern="07[0-9]{9}"
+              title={t.phoneHint}
+              maxLength={11}
+              autoComplete="tel"
               required
             />
+            <p className="mt-1 text-xs text-slate-500">{t.phoneHint}</p>
           </div>
           <button type="submit" disabled={pending} className="btn-gold w-full">
             {pending ? "..." : t.forgotSubmit}

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { QrBox } from "@/components/QrBox";
+import { MetalPlaque } from "@/components/MetalPlaque";
 import { logoutAction } from "@/lib/actions";
 import { getSession } from "@/lib/auth";
-import { orderStatusBadge, orderStatusLabel } from "@/lib/commerce";
+import { formatPrice, orderStatusBadge, orderStatusLabel } from "@/lib/commerce";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase } from "@/lib/db";
 import type { Memorial, Order } from "@/lib/types";
@@ -111,9 +111,14 @@ export default async function DashboardPage({
                     <summary className="cursor-pointer text-sm text-gold">
                       {t.qr}
                     </summary>
-                    <div className="mt-3 max-w-sm">
-                      <QrBox
+                    <div className="mt-3">
+                      <MetalPlaque
                         path={`/m/${m.slug}`}
+                        name={m.name}
+                        birthYear={m.birth_year}
+                        deathYear={m.death_year}
+                        gender={m.gender}
+                        lang={lang}
                         labels={{
                           title: dict.order.qrTitle,
                           text: dict.order.qrText,
@@ -163,7 +168,7 @@ export default async function DashboardPage({
                           : dict.wizard.online}
                     </td>
                     <td className="p-3 text-slate-300" dir="ltr">
-                      {o.amount} {o.currency}
+                      {formatPrice(o.amount, o.currency)}
                     </td>
                     <td className="p-3">
                       <span

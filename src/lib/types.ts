@@ -5,6 +5,7 @@ export const RTL_LOCALES: Locale[] = ["ar", "ku"];
 
 export type User = {
   id: string;
+  /** Legacy NOT NULL column; phone-only sign-ups store `<phone>@phone.invalid`. */
   email: string;
   password_hash: string;
   name: string;

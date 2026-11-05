@@ -24,9 +24,21 @@ export function LangSwitcher({
     if (locale === current) return;
     // Remember the choice for the QR redirect as well.
     document.cookie = `lang=${locale};path=/;max-age=${60 * 60 * 24 * 365}`;
+
+    // The QR URL is `/m/<slug>` (rewritten to `/<locale>/m/<slug>` internally)
+    // and has no locale segment of its own — replacing `parts[1]` there would
+    // produce `/<locale>/<slug>` and a 404. Prefix it instead.
     const parts = pathname.split("/");
-    parts[1] = locale;
-    router.push(parts.join("/") || `/${locale}`);
+    const hasLocale = (LOCALES as string[]).includes(parts[1] ?? "");
+    const next = hasLocale
+      ? pathname.replace(/^\/[^/]+/, `/${locale}`)
+      : `/${locale}${pathname}`;
+
+    // Keep the current query string (`?edit=<id>` in the wizard, admin filters…).
+    // Read it from the address bar (only runs on a user interaction) so this
+    // component never needs a useSearchParams() Suspense boundary.
+    const qs = window.location.search.replace(/^\?/, "");
+    router.push(qs ? `${next}?${qs}` : next);
   }
 
   return (

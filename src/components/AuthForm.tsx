@@ -1,12 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
-import {
-  loginAction,
-  registerAction,
-} from "@/lib/actions";
+import { loginAction, registerAction } from "@/lib/actions";
 import { COUNTRY_CODES, type Dict } from "@/lib/dict";
+import { normalizePhone } from "@/lib/phone";
 
 export function AuthForm({
   mode,
@@ -19,15 +17,19 @@ export function AuthForm({
 }) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction, pending] = useActionState(action, null);
+  // Phone is the sign-in identifier, so it is normalized while typing:
+  // "+964 770 123 4567" and "00964 770…" both become "07701234567".
+  const [phone, setPhone] = useState("");
 
   const t = dict.auth;
   const errors: Record<string, string> = {
     invalid: t.invalid,
-    exists: t.exists,
-    email: t.invalid,
+    phoneExists: t.phoneExists,
+    phone: t.invalidPhone,
     password: t.invalid,
     name: t.fullName,
     rate: t.rateLimit,
+    error: dict.common.error,
   };
   const errorText = state?.error ? errors[state.error] : null;
 
@@ -50,20 +52,26 @@ export function AuthForm({
           )}
 
           <div>
-            <label className="label" htmlFor="email">
-              {mode === "login" ? t.emailOrPhone : t.email}
+            <label className="label" htmlFor="phone">
+              {t.phone} *
             </label>
-            {/* Login accepts an email OR a phone number — type="email" would
-                block phone sign-in with a browser validation error. */}
             <input
-              id="email"
-              name="email"
-              type={mode === "login" ? "text" : "email"}
+              id="phone"
+              name="phone"
+              type="tel"
+              inputMode="tel"
               className="input"
               dir="ltr"
-              autoComplete={mode === "login" ? "username" : "email"}
+              value={phone}
+              onChange={(e) => setPhone(normalizePhone(e.target.value))}
+              placeholder="07XX XXX XXXX"
+              pattern="07[0-9]{9}"
+              title={t.phoneHint}
+              maxLength={11}
+              autoComplete={mode === "login" ? "username" : "tel"}
               required
             />
+            <p className="mt-1 text-xs text-slate-500">{t.phoneHint}</p>
           </div>
 
           <div>
@@ -77,6 +85,7 @@ export function AuthForm({
               className="input"
               dir="ltr"
               minLength={mode === "register" ? 6 : undefined}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
               required
             />
             {mode === "register" && (
@@ -85,37 +94,23 @@ export function AuthForm({
           </div>
 
           {mode === "register" && (
-            <>
-              <div>
-                <label className="label" htmlFor="phone">
-                  {t.phone}
-                </label>
-                <input
-                  id="phone"
-                  name="phone"
-                  className="input"
-                  dir="ltr"
-                  placeholder="+964 ..."
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="country">
-                  {t.country}
-                </label>
-                <select
-                  id="country"
-                  name="country"
-                  className="input"
-                  defaultValue="IQ"
-                >
-                  {COUNTRY_CODES.map((c) => (
-                    <option key={c} value={c}>
-                      {dict.countries[c]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
+            <div>
+              <label className="label" htmlFor="country">
+                {t.country}
+              </label>
+              <select
+                id="country"
+                name="country"
+                className="input"
+                defaultValue="IQ"
+              >
+                {COUNTRY_CODES.map((c) => (
+                  <option key={c} value={c}>
+                    {dict.countries[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           {errorText && (

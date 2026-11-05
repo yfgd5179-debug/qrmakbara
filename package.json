@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node tests/sigv4.test.mjs"
+    "test": "node tests/sigv4.test.mjs && node tests/sms.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

@@ -43,7 +43,8 @@ implementasyonuna karşı birebir doğrular; `s3.ts` değişikliklerinde çalı�
 ADMIN_KEY=admin123        # yönetim paneli anahtarı
 GROQ_API_KEY=...          # isteğe bağlı, ücretsiz Groq anahtarı
 GEMINI_API_KEY=...        # isteğe bağlı, ücretsiz Gemini anahtarı
-RESEND_API_KEY=...        # şifre sıfırlama e-postaları için (ücretsiz resend.com)
+SMS_PROVIDER=...          # twilio|vonage|whatsapp|webhook (isteğe bağlı)
+SMS_WEBHOOK_URL=...       # isteğe bağlı, şifre sıfırlama için (07'li numaralar)
 
 # Supabase (zorunlu) — https://supabase.com (free plan)
 NEXT_PUBLIC_SUPABASE_URL=...
@@ -187,7 +188,7 @@ Storage'da, videolar (`S3_*` yapılandırıldıysa) Backblaze B2'de saklanır. G
      (üretimde `admin123` devre dışıdır — mutlaka güçlü bir değer verin)
    - videolar için: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
      `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`
-   - isteğe bağlı: `GROQ_API_KEY` / `GEMINI_API_KEY`, `RESEND_API_KEY`
+   - isteğe bağlı: `GROQ_API_KEY` / `GEMINI_API_KEY`, `SMS_PROVIDER`/`TWILIO_*`/`VONAGE_*`/`WHATSAPP_*`/`SMS_WEBHOOK_URL`
 3. **Deploy** → build `npm run build` ile tamamlanır. Uzun süren server
    action'lar (AI hikâye üretimi) için `maxDuration = 120`
    (`src/app/[lang]/layout.tsx`) tanımlıdır.

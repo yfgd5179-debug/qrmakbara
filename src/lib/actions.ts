@@ -20,13 +20,22 @@ import {
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { supabase, newId, parseList } from "./db";
 import { hasLocale } from "./dict";
+import { isValidPhone, normalizePhone, phoneVariants, toE164 } from "./phone";
 import { hit, clientIp } from "./ratelimit";
+import { resetCodeMessage, sendSms } from "./sms";
 import { s3CanonicalUrl, s3Configured, s3Delete, s3Exists, s3KeyFromUrl, s3SignedUrl } from "./s3";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export type FormState = { error?: string } | null;
+
+/**
+ * Accounts are phone-only, but the legacy `users.email` column is NOT NULL and
+ * unique. Store a deterministic, non-deliverable (.invalid) address so the
+ * constraint is satisfied without ever asking the user for an email.
+ */
+function internalEmail(phone: string): string {
+  return `${phone}@phone.invalid`;
+}
 
 function slugify(name: string): string {
   const base = name
@@ -38,13 +47,18 @@ function slugify(name: string): string {
   return `${base || "memorial"}-${tail}`;
 }
 
-async function getMemorial(id: string, userId: string): Promise<Memorial> {
+/**
+ * Loads a memorial owned by `userId`, or null. Returning null (instead of
+ * throwing) lets the server actions answer with a normal error the UI can
+ * show — a throw here would surface as an opaque "server error" toast.
+ */
+async function getMemorial(id: string, userId: string): Promise<Memorial | null> {
   const { data: row } = await supabase
     .from("memorials")
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (!row || (row as Memorial).user_id !== userId) throw new Error("Not found");
+  if (!row || (row as Memorial).user_id !== userId) return null;
   return row as Memorial;
 }
 
@@ -54,38 +68,42 @@ export async function registerAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const name = String(formData.get("name") ?? "").trim();
-  const phone = String(formData.get("phone") ?? "").trim();
+  // The phone number is the only identifier: sign-up and sign-in both use it.
+  const phone = normalizePhone(String(formData.get("phone") ?? ""));
   const country = String(formData.get("country") ?? "IQ");
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
 
-  if (!EMAIL_RE.test(email)) return { error: "email" };
+  if (!isValidPhone(phone)) return { error: "phone" };
   if (password.length < 6) return { error: "password" };
   if (!name) return { error: "name" };
 
   // Cap sign-ups per IP to slow bulk account creation.
   if (hit(`register:ip:${await clientIp()}`, 10)) return { error: "rate" };
 
-  const { data: exists } = await supabase
+  // The phone is the login identifier, so it must be unique.
+  const { data: phoneTaken } = await supabase
     .from("users")
     .select("id")
-    .eq("email", email)
+    .eq("phone", phone)
     .maybeSingle();
-  if (exists) return { error: "exists" };
+  if (phoneTaken) return { error: "phoneExists" };
 
   const id = newId();
-  await supabase.from("users").insert({
+  const { error: insertError } = await supabase.from("users").insert({
     id,
-    email,
+    email: internalEmail(phone),
     password_hash: hashPassword(password),
     name,
     phone,
     country,
     created_at: new Date().toISOString(),
   });
+  // A silent failure here used to log the user in as a ghost (session insert
+  // would fail on the foreign key) and bounce them back to /login.
+  if (insertError) return { error: "error" };
   await createSession(id);
   redirect(home);
 }
@@ -94,12 +112,15 @@ export async function loginAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const identifier = String(formData.get("email") ?? "").trim();
+  const identifier = normalizePhone(String(formData.get("phone") ?? ""));
   const password = String(formData.get("password") ?? "");
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
 
-  if (!identifier || !password) return { error: "invalid" };
+  // Numbers are validated before touching the database so a typo gets a
+  // useful "must start with 07" message instead of "wrong password".
+  if (!isValidPhone(identifier)) return { error: "phone" };
+  if (!password) return { error: "invalid" };
 
   // Throttle brute-force: per identifier+IP, plus a looser per-IP cap.
   const ip = await clientIp();
@@ -111,22 +132,16 @@ export async function loginAction(
   }
 
   // Never interpolate user input into a PostgREST `.or()` filter string —
-  // that is a filter-injection vector. Use two parameterized `.eq()`
-  // lookups instead (supabase-js URL-encodes values safely).
-  const { data: byEmail } = await supabase
+  // that is a filter-injection vector. Parameterized `.in()` over the known
+  // spellings of the number (07…, +964…, 964…, 00964…) is safe and also
+  // matches rows saved before numbers were normalized.
+  const { data: byPhone } = await supabase
     .from("users")
     .select("*")
-    .eq("email", identifier.toLowerCase())
+    .in("phone", phoneVariants(identifier))
+    .limit(1)
     .maybeSingle();
-  let row = byEmail;
-  if (!row) {
-    const { data: byPhone } = await supabase
-      .from("users")
-      .select("*")
-      .eq("phone", identifier)
-      .maybeSingle();
-    row = byPhone;
-  }
+  const row = byPhone;
 
   if (!row || !verifyPassword(password, (row as { password_hash: string }).password_hash)) {
     return { error: "invalid" };
@@ -140,37 +155,13 @@ export async function logoutAction(): Promise<void> {
   redirect("/");
 }
 
-async function sendResetEmail(email: string, code: string): Promise<boolean> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return false;
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        from: process.env.RESEND_FROM ?? "QR Makbara <onboarding@resend.dev>",
-        to: [email],
-        subject: `QR Makbara — password reset code: ${code}`,
-        text: `Your password reset code is: ${code}\n\nIt expires in 10 minutes. If you did not request this, ignore this email.`,
-        html: `<p>Your password reset code is: <strong>${code}</strong></p><p>It expires in 10 minutes. If you did not request this, ignore this email.</p>`,
-      }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * In-memory rate limiter. Per-instance (resets on cold start / across
  * serverless instances), but enough to blunt brute-force attempts.
  */
 const RATE_WINDOW_MS = 10 * 60 * 1000;
-const MAX_RESET_REQUESTS = 3; // per email per window
-const MAX_CODE_ATTEMPTS = 5; // verification tries per email per window
+const MAX_RESET_REQUESTS = 3; // per phone per window
+const MAX_CODE_ATTEMPTS = 5; // verification tries per phone per window
 const resetRequests = new Map<string, number[]>();
 const codeAttempts = new Map<string, number[]>();
 
@@ -197,19 +188,20 @@ export async function requestResetAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "email" };
-  if (tooMany(email, resetRequests, MAX_RESET_REQUESTS)) {
+  const phone = normalizePhone(String(formData.get("phone") ?? ""));
+  if (!isValidPhone(phone)) return { error: "phone" };
+  if (tooMany(phone, resetRequests, MAX_RESET_REQUESTS)) {
     return { error: "rate" };
   }
 
   const { data: row } = await supabase
     .from("users")
-    .select("id, email")
-    .eq("email", email)
+    .select("id")
+    .in("phone", phoneVariants(phone))
+    .limit(1)
     .maybeSingle();
 
-  // Always respond success to avoid leaking which emails exist.
+  // Always respond success to avoid leaking which numbers exist.
   if (row) {
     const code = String(randomInt(100000, 1000000));
     const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -217,12 +209,15 @@ export async function requestResetAction(
       .from("users")
       .update({ reset_code: code, reset_expires: expires })
       .eq("id", (row as { id: string }).id);
-    const sent = await sendResetEmail(email, code);
-    if (!sent) {
-      // Email delivery is not configured. The code is NEVER returned to the
-      // client — log it server-side for local development only.
+    const sent = await sendSms(toE164(phone), resetCodeMessage(code));
+    if (!sent.ok) {
+      // SMS not configured or the gateway refused. The code is NEVER returned
+      // to the client — log it server-side for local development only, so
+      // support can pass it on when a customer calls.
       if (process.env.NODE_ENV !== "production") {
-        console.warn(`[reset] RESEND_API_KEY missing/failed. Code for ${email}: ${code}`);
+        console.warn(
+          `[reset] SMS not delivered (${sent.provider || "unconfigured"}). Code for ${phone}: ${code}`
+        );
       }
     }
   }
@@ -233,18 +228,20 @@ export async function resetPasswordAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const phone = normalizePhone(String(formData.get("phone") ?? ""));
   const code = String(formData.get("code") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  if (!isValidPhone(phone)) return { error: "phone" };
   if (password.length < 6) return { error: "password" };
-  if (tooMany(email, codeAttempts, MAX_CODE_ATTEMPTS)) {
+  if (tooMany(phone, codeAttempts, MAX_CODE_ATTEMPTS)) {
     return { error: "invalidCode" };
   }
 
   const { data: row } = await supabase
     .from("users")
     .select("id, reset_code, reset_expires")
-    .eq("email", email)
+    .in("phone", phoneVariants(phone))
+    .limit(1)
     .maybeSingle();
   if (!row) return { error: "invalidCode" };
   const r = row as { reset_code: string | null; reset_expires: string | null };
@@ -286,7 +283,7 @@ export async function createMemorialAction(
 
   const id = newId();
   const slug = slugify(input.name);
-  await supabase.from("memorials").insert({
+  const { error } = await supabase.from("memorials").insert({
     id,
     user_id: user.id,
     slug,
@@ -300,6 +297,7 @@ export async function createMemorialAction(
     country: input.country,
     created_at: new Date().toISOString(),
   });
+  if (error) return { error: "error" };
   return { id, slug };
 }
 
@@ -330,13 +328,14 @@ export async function updateMemorialAction(
 ): Promise<{ ok: true } | { error: string }> {
   const user = await getSession();
   if (!user) return { error: "auth" };
-  await getMemorial(id, user.id);
+  if (!(await getMemorial(id, user.id))) return { error: "auth" };
 
   const keys = UPDATABLE.filter((k) => k in patch);
   if (keys.length === 0) return { ok: true };
   const update: Record<string, string> = {};
   for (const k of keys) update[k] = patch[k] ?? "";
-  await supabase.from("memorials").update(update).eq("id", id);
+  const { error } = await supabase.from("memorials").update(update).eq("id", id);
+  if (error) return { error: "error" };
   return { ok: true };
 }
 
@@ -391,7 +390,7 @@ export async function createUploadUrlAction(
 > {
   const user = await getSession();
   if (!user) return { error: "auth" };
-  await getMemorial(id, user.id);
+  if (!(await getMemorial(id, user.id))) return { error: "auth" };
 
   const extMap = kind === "photos" ? IMAGE_EXT : VIDEO_EXT;
   const ext = extMap[contentType];
@@ -453,6 +452,7 @@ export async function finalizeUploadAction(
   const user = await getSession();
   if (!user) return { urls: [], error: "auth" };
   const memorial = await getMemorial(id, user.id);
+  if (!memorial) return { urls: [], error: "auth" };
   if (!Array.isArray(uploads) || uploads.length === 0) {
     return { urls: [], error: "empty" };
   }
@@ -483,6 +483,7 @@ export async function removeMediaAction(
   const user = await getSession();
   if (!user) return { urls: [], error: "auth" };
   const memorial = await getMemorial(id, user.id);
+  if (!memorial) return { urls: [], error: "auth" };
   const current = parseList(memorial[kind]).filter((u) => u !== url);
   await supabase.from("memorials").update({ [kind]: JSON.stringify(current) }).eq("id", id);
 
@@ -512,6 +513,7 @@ export async function generateStoryAction(
   const user = await getSession();
   if (!user) return { error: "auth" };
   const memorial = await getMemorial(id, user.id);
+  if (!memorial) return { error: "auth" };
   if (!hasLocale(lang)) return { error: "lang" };
 
   // Cap AI generations per user (pollinations is free but still worth capping).
@@ -520,7 +522,14 @@ export async function generateStoryAction(
   const result = await generateStory(memorial, lang);
   await supabase
     .from("memorials")
-    .update({ story: result.story, story_lang: lang, status: "ready" })
+    .update({
+      story: result.story,
+      story_lang: lang,
+      // Regenerating the story of a page that is already ordered must not
+      // push it back to "ready" — that hides the public page (404) for
+      // everyone but the owner.
+      status: memorial.status === "published" ? "published" : "ready",
+    })
     .eq("id", id);
   return result;
 }
@@ -548,6 +557,7 @@ export async function placeOrderAction(
   if (!user) return { error: "auth" };
 
   const memorial = await getMemorial(input.memorial_id, user.id);
+  if (!memorial) return { error: "auth" };
   if (!input.contact_name.trim() || !input.phone.trim() || !input.address.trim()) {
     return { error: "required" };
   }
@@ -565,7 +575,7 @@ export async function placeOrderAction(
 
   const { amount, currency } = priceFor(input.country);
   const id = newId();
-  await supabase.from("orders").insert({
+  const { error } = await supabase.from("orders").insert({
     id,
     memorial_id: memorial.id,
     user_id: user.id,
@@ -580,6 +590,7 @@ export async function placeOrderAction(
     status: input.payment_method === "cash" ? "pending" : "paid",
     created_at: new Date().toISOString(),
   });
+  if (error) return { error: "error" };
   await supabase.from("memorials").update({ status: "published" }).eq("id", memorial.id);
   // The dashboard route is "/[lang]/dashboard" — a literal "/dashboard" path
   // matches nothing and would silently skip the revalidation.

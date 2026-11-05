@@ -35,16 +35,18 @@ export default async function AdminPage({
 
   const { data: memorialsRaw } = await supabase
     .from("memorials")
-    .select("*, users(email)")
+    .select("*, users(phone, name)")
     .order("created_at", { ascending: false });
   const memorials = (memorialsRaw ?? []).map((m: Record<string, unknown>) => ({
     ...m,
-    user_email: (m.users as { email?: string } | null)?.email ?? "",
-  })) as unknown as (Memorial & { user_email: string })[];
+    user_phone: (m.users as { phone?: string } | null)?.phone ?? "",
+    user_name: (m.users as { name?: string } | null)?.name ?? "",
+  })) as unknown as (Memorial & { user_phone: string; user_name: string })[];
 
+  // Accounts are phone-only; email is not collected anywhere.
   const { data: usersRaw } = await supabase
     .from("users")
-    .select("id, email, name, phone, country, created_at")
+    .select("id, name, phone, country, created_at")
     .order("created_at", { ascending: false });
   const users = (usersRaw ?? []) as unknown as User[];
 
