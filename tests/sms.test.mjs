@@ -32,6 +32,10 @@ function resetEnv() {
     "TWILIO_AUTH_TOKEN",
     "VONAGE_API_KEY",
     "VONAGE_API_SECRET",
+    "WHATSAPP_TOKEN",
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "TEXTBEE_API_KEY",
+    "TEXTBELT_KEY",
   ]) {
     delete process.env[key];
   }
@@ -162,6 +166,33 @@ await check("webhook: JSON body with e.164 number and bearer token", async () =>
   assert.equal(url, "https://sms.example.com/send");
   assert.equal(init.headers.authorization, "Bearer whsecret");
   assert.deepEqual(JSON.parse(init.body), { to: TO, message: MSG });
+});
+
+await check("textbee: x-api-key header, recipients array, success flag", async () => {
+  process.env.TEXTBEE_API_KEY = "txb_test";
+  reply = { status: 200, body: { data: { success: true, smsBatchId: "b1" } } };
+
+  const out = await sendSms(TO, MSG);
+  assert.deepEqual(out, { ok: true, provider: "textbee" });
+  const { url, init } = calls[0];
+  assert.equal(url, "https://api.textbee.dev/api/v1/gateway/send-sms");
+  assert.equal(init.headers["x-api-key"], "txb_test");
+  assert.equal(init.headers["content-type"], "application/json");
+  assert.deepEqual(JSON.parse(init.body), { recipients: [TO], message: MSG });
+});
+
+await check("textbee: accepted batch flagged success:false is a failure", async () => {
+  process.env.TEXTBEE_API_KEY = "txb_test";
+  reply = { status: 200, body: { data: { success: false } } };
+
+  const out = await sendSms(TO, MSG);
+  assert.deepEqual(out, { ok: false, provider: "textbee" });
+});
+
+await check("auto-detection prefers textbee over other credentials", async () => {
+  process.env.TEXTBEE_API_KEY = "txb_test";
+  process.env.SMS_WEBHOOK_URL = "https://sms.example.com/send";
+  assert.equal(smsProvider(), "textbee");
 });
 
 await check("network failure is reported, not thrown", async () => {

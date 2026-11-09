@@ -1,9 +1,13 @@
 -- Run this in your Supabase project's SQL editor.
 -- Tables mirror the previous SQLite schema.
 
+-- Accounts are identified by phone number (e-mail sign-in was removed).
+-- `email` stays nullable for legacy rows; new sign-ups store a synthetic
+-- `<digits>@phone.invalid` value only when the column is still NOT NULL.
+-- Existing databases:  alter table users alter column email drop not null;
 create table if not exists users (
   id text primary key,
-  email text unique not null,
+  email text unique,
   password_hash text not null,
   name text not null default '',
   phone text not null default '',

@@ -1,39 +1,79 @@
 /**
- * Iraqi mobile numbers: 11 digits, always starting with 07 (e.g. 0770 123 4567).
- * Accounts sign in with this number, so every entry point normalizes it the
- * same way: `+964 770…`, `00964…` and `964…` all become `0770…`.
+ * Phone-number helpers.
+ *
+ * Accounts are identified by phone number only (e-mail sign-in was removed),
+ * so the same number has to be recognised however it was typed: "+964 770 642
+ * 5337", "009647706425337", "07706425337" or "9647706425337".
  */
-export const IQ_PHONE_RE = /^07\d{9}$/;
 
-/** Strips formatting and converts international Iraqi prefixes to the local 07 form. */
-export function normalizePhone(input: string): string {
-  let digits = (input ?? "").trim().replace(/[^\d]/g, "");
-  if (digits.startsWith("00964")) digits = "0" + digits.slice(5);
-  else if (digits.startsWith("964") && digits.length > 10) digits = "0" + digits.slice(3);
-  else if (digits.startsWith("7") && digits.length === 10) digits = "0" + digits;
-  return digits;
-}
-
-export function isValidPhone(input: string): boolean {
-  return IQ_PHONE_RE.test(normalizePhone(input));
+/** Digits only, separators dropped. */
+export function phoneDigits(raw: string): string {
+  return raw.replace(/\D/g, "");
 }
 
 /**
- * Local `07XXXXXXXXX` → E.164 `+9647XXXXXXXXX`, the format every SMS gateway
- * expects. Returns "" for numbers that are not valid Iraqi mobiles.
+ * Canonical form: `+<country><number>`.
+ *
+ * National formats are promoted using the two countries this site serves:
+ * `07…` → Iraq (+964, the default), `05…` → Turkey (+90). `00…` is treated as
+ * the international prefix.
  */
-export function toE164(input: string): string {
-  const local = normalizePhone(input);
-  return IQ_PHONE_RE.test(local) ? `+964${local.slice(1)}` : "";
+export function canonicalPhone(raw: string): string {
+  const cleaned = raw.trim().replace(/[\s().\-–—]/g, "");
+  if (!cleaned) return "";
+
+  const digits = phoneDigits(cleaned);
+  if (!digits) return "";
+
+  if (cleaned.startsWith("00")) return `+${digits.slice(2)}`;
+  if (cleaned.startsWith("+")) return `+${digits}`;
+  if (cleaned.startsWith("0")) {
+    const national = digits.slice(1);
+    // Turkish mobiles are 05…, everything else on this site is Iraqi 07….
+    return national.startsWith("5") ? `+90${national}` : `+964${national}`;
+  }
+  return `+${digits}`;
 }
 
 /**
- * Stored numbers may predate normalization (older rows saved "+964770…"), so
- * lookups try the canonical form plus the international spellings.
+ * Every format the number could be stored in, best guess first. Used for
+ * parameterised `.eq()` lookups — user input is never interpolated into a
+ * PostgREST filter string.
  */
-export function phoneVariants(input: string): string[] {
-  const local = normalizePhone(input);
-  if (!IQ_PHONE_RE.test(local)) return [input.trim()].filter(Boolean);
-  const rest = local.slice(1);
-  return [local, `+964${rest}`, `964${rest}`, `00964${rest}`];
+export function phoneVariants(raw: string): string[] {
+  const out: string[] = [];
+  const add = (value?: string) => {
+    if (value && !out.includes(value)) out.push(value);
+  };
+
+  const trimmed = raw.trim();
+  const digits = phoneDigits(raw);
+  const canonical = canonicalPhone(raw);
+
+  add(trimmed); // exactly as stored (legacy rows: "07706425337")
+  add(canonical); // "+9647706425337"
+  add(digits); // "9647706425337"
+
+  if (canonical.startsWith("+964")) add(`0${canonical.slice(4)}`);
+  else if (canonical.startsWith("+90")) add(`0${canonical.slice(3)}`);
+
+  if (trimmed.startsWith("00")) add(`+${digits.slice(2)}`);
+
+  return out;
+}
+
+/** A plausible E.164 number: 7–15 digits after normalization. */
+export function isValidPhone(raw: string): boolean {
+  const digits = phoneDigits(canonicalPhone(raw));
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+/**
+ * Canonical `+<country><number>` for the two mobile ranges this site serves
+ * (Iraqi 07… → +9647…, Turkish 05… → +905…), or `""` when the number is not a
+ * valid mobile of either country. SMS gateways expect exactly this shape.
+ */
+export function toE164(raw: string): string {
+  const e164 = canonicalPhone(raw);
+  return /^\+9647\d{9}$/.test(e164) || /^\+905\d{9}$/.test(e164) ? e164 : "";
 }

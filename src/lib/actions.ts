@@ -19,23 +19,14 @@ import {
 } from "./auth";
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { supabase, newId, parseList } from "./db";
-import { hasLocale } from "./dict";
-import { isValidPhone, normalizePhone, phoneVariants, toE164 } from "./phone";
+import { getDict, hasLocale } from "./dict";
+import { canonicalPhone, isValidPhone, phoneDigits, phoneVariants } from "./phone";
 import { hit, clientIp } from "./ratelimit";
-import { resetCodeMessage, sendSms } from "./sms";
 import { s3CanonicalUrl, s3Configured, s3Delete, s3Exists, s3KeyFromUrl, s3SignedUrl } from "./s3";
+import { sendSms } from "./sms";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
 
 export type FormState = { error?: string } | null;
-
-/**
- * Accounts are phone-only, but the legacy `users.email` column is NOT NULL and
- * unique. Store a deterministic, non-deliverable (.invalid) address so the
- * constraint is satisfied without ever asking the user for an email.
- */
-function internalEmail(phone: string): string {
-  return `${phone}@phone.invalid`;
-}
 
 function slugify(name: string): string {
   const base = name
@@ -47,12 +38,10 @@ function slugify(name: string): string {
   return `${base || "memorial"}-${tail}`;
 }
 
-/**
- * Loads a memorial owned by `userId`, or null. Returning null (instead of
- * throwing) lets the server actions answer with a normal error the UI can
- * show — a throw here would surface as an opaque "server error" toast.
- */
-async function getMemorial(id: string, userId: string): Promise<Memorial | null> {
+async function getMemorial(
+  id: string,
+  userId: string
+): Promise<Memorial | null> {
   const { data: row } = await supabase
     .from("memorials")
     .select("*")
@@ -64,14 +53,64 @@ async function getMemorial(id: string, userId: string): Promise<Memorial | null>
 
 /* ---------------------------- auth ---------------------------- */
 
+/**
+ * Finds a user by phone number, however it was typed. Every candidate is a
+ * parameterised `.eq()` lookup (supabase-js URL-encodes the value), so user
+ * input never reaches a PostgREST filter string.
+ */
+async function findUserByPhone(
+  raw: string
+): Promise<Record<string, unknown> | null> {
+  const results = await Promise.all(
+    phoneVariants(raw).map((variant) =>
+      supabase
+        .from("users")
+        .select("*")
+        .eq("phone", variant)
+        .limit(1)
+        .maybeSingle()
+    )
+  );
+  for (const result of results) {
+    if (result.data) return result.data as Record<string, unknown>;
+  }
+  return null;
+}
+
+/**
+ * `users.email` used to be `not null` from the e-mail sign-in days. Try NULL
+ * first — the correct value once the column is made nullable — and fall back to
+ * a synthetic address derived from the phone number so registration keeps
+ * working without a manual migration.
+ */
+let emailColumnNullable: boolean | null = null;
+
+async function insertUser(row: Record<string, unknown>): Promise<string | undefined> {
+  if (emailColumnNullable !== false) {
+    const { error } = await supabase.from("users").insert({ ...row, email: null });
+    if (!error) {
+      emailColumnNullable = true;
+      return undefined;
+    }
+    emailColumnNullable = false;
+  }
+
+  const { error } = await supabase.from("users").insert({
+    ...row,
+    email: `${phoneDigits(String(row.phone))}@phone.invalid`,
+  });
+  if (!error) return undefined;
+  // 23505 = unique_violation (the same number was registered at the same time).
+  return error.code === "23505" ? "exists" : "failed";
+}
+
 export async function registerAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
+  const phone = String(formData.get("phone") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const name = String(formData.get("name") ?? "").trim();
-  // The phone number is the only identifier: sign-up and sign-in both use it.
-  const phone = normalizePhone(String(formData.get("phone") ?? ""));
   const country = String(formData.get("country") ?? "IQ");
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
@@ -83,27 +122,20 @@ export async function registerAction(
   // Cap sign-ups per IP to slow bulk account creation.
   if (hit(`register:ip:${await clientIp()}`, 10)) return { error: "rate" };
 
-  // The phone is the login identifier, so it must be unique.
-  const { data: phoneTaken } = await supabase
-    .from("users")
-    .select("id")
-    .eq("phone", phone)
-    .maybeSingle();
-  if (phoneTaken) return { error: "phoneExists" };
+  // The phone number is the account identifier — it must be unique.
+  if (await findUserByPhone(phone)) return { error: "exists" };
 
   const id = newId();
-  const { error: insertError } = await supabase.from("users").insert({
+  const failure = await insertUser({
     id,
-    email: internalEmail(phone),
     password_hash: hashPassword(password),
     name,
-    phone,
+    phone: canonicalPhone(phone),
     country,
     created_at: new Date().toISOString(),
   });
-  // A silent failure here used to log the user in as a ghost (session insert
-  // would fail on the foreign key) and bounce them back to /login.
-  if (insertError) return { error: "error" };
+  if (failure) return { error: failure };
+
   await createSession(id);
   redirect(home);
 }
@@ -112,41 +144,28 @@ export async function loginAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const identifier = normalizePhone(String(formData.get("phone") ?? ""));
+  const phone = String(formData.get("phone") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
 
-  // Numbers are validated before touching the database so a typo gets a
-  // useful "must start with 07" message instead of "wrong password".
-  if (!isValidPhone(identifier)) return { error: "phone" };
-  if (!password) return { error: "invalid" };
+  if (!phone || !password) return { error: "invalid" };
 
-  // Throttle brute-force: per identifier+IP, plus a looser per-IP cap.
+  // Throttle brute-force: per phone+IP, plus a looser per-IP cap. No OTP is
+  // asked here — verification only happens when a password is reset.
   const ip = await clientIp();
   if (
-    hit(`login:id:${identifier.toLowerCase()}`, 10) ||
+    hit(`login:phone:${canonicalPhone(phone) || phone.toLowerCase()}`, 10) ||
     hit(`login:ip:${ip}`, 30)
   ) {
     return { error: "rate" };
   }
 
-  // Never interpolate user input into a PostgREST `.or()` filter string —
-  // that is a filter-injection vector. Parameterized `.in()` over the known
-  // spellings of the number (07…, +964…, 964…, 00964…) is safe and also
-  // matches rows saved before numbers were normalized.
-  const { data: byPhone } = await supabase
-    .from("users")
-    .select("*")
-    .in("phone", phoneVariants(identifier))
-    .limit(1)
-    .maybeSingle();
-  const row = byPhone;
-
-  if (!row || !verifyPassword(password, (row as { password_hash: string }).password_hash)) {
+  const row = await findUserByPhone(phone);
+  if (!row || !verifyPassword(password, String(row.password_hash ?? ""))) {
     return { error: "invalid" };
   }
-  await createSession((row as { id: string }).id);
+  await createSession(String(row.id));
   redirect(home);
 }
 
@@ -184,41 +203,49 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
+/**
+ * Sends the reset code by SMS. This is the only place in the app that
+ * verifies a phone number — signing in never asks for a code.
+ */
 export async function requestResetAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const phone = normalizePhone(String(formData.get("phone") ?? ""));
+  const phone = String(formData.get("phone") ?? "").trim();
+  const lang = String(formData.get("lang") ?? "ar");
   if (!isValidPhone(phone)) return { error: "phone" };
-  if (tooMany(phone, resetRequests, MAX_RESET_REQUESTS)) {
-    return { error: "rate" };
-  }
 
-  const { data: row } = await supabase
-    .from("users")
-    .select("id")
-    .in("phone", phoneVariants(phone))
-    .limit(1)
-    .maybeSingle();
+  const key = canonicalPhone(phone);
+  if (tooMany(key, resetRequests, MAX_RESET_REQUESTS)) return { error: "rate" };
 
-  // Always respond success to avoid leaking which numbers exist.
+  const row = await findUserByPhone(phone);
+  // Always respond the same way for unknown numbers, so the form cannot be
+  // used to discover which phone numbers have an account.
   if (row) {
     const code = String(randomInt(100000, 1000000));
     const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     await supabase
       .from("users")
       .update({ reset_code: code, reset_expires: expires })
-      .eq("id", (row as { id: string }).id);
-    const sent = await sendSms(toE164(phone), resetCodeMessage(code));
-    if (!sent.ok) {
-      // SMS not configured or the gateway refused. The code is NEVER returned
-      // to the client — log it server-side for local development only, so
+      .eq("id", String(row.id));
+
+    const dict = getDict(hasLocale(lang) ? lang : "ar");
+    const message = `QR Makbara — ${dict.auth.resetCode}: ${code}`;
+    // sendSms takes E.164 and never throws; a stored legacy number ("0770…")
+    // is canonicalized here so the gateway always receives "+964…".
+    const to = canonicalPhone(String(row.phone) || phone);
+    const outcome = await sendSms(to, message);
+    if (!to || !outcome.ok) {
+      // Gateway refused or is not configured. The code is NEVER returned to
+      // the client — it is logged server-side for local development only, so
       // support can pass it on when a customer calls.
+      console.warn(
+        `[reset] SMS not sent to ${key} (${outcome.provider || "unconfigured"})`
+      );
       if (process.env.NODE_ENV !== "production") {
-        console.warn(
-          `[reset] SMS not delivered (${sent.provider || "unconfigured"}). Code for ${phone}: ${code}`
-        );
+        console.warn(`[reset] code for ${key}: ${code}`);
       }
+      return { error: "send" };
     }
   }
   return { error: undefined } as FormState;
@@ -228,29 +255,22 @@ export async function resetPasswordAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const phone = normalizePhone(String(formData.get("phone") ?? ""));
+  const phone = String(formData.get("phone") ?? "").trim();
   const code = String(formData.get("code") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   if (!isValidPhone(phone)) return { error: "phone" };
   if (password.length < 6) return { error: "password" };
-  if (tooMany(phone, codeAttempts, MAX_CODE_ATTEMPTS)) {
+  if (tooMany(canonicalPhone(phone), codeAttempts, MAX_CODE_ATTEMPTS)) {
     return { error: "invalidCode" };
   }
 
-  const { data: row } = await supabase
-    .from("users")
-    .select("id, reset_code, reset_expires")
-    .in("phone", phoneVariants(phone))
-    .limit(1)
-    .maybeSingle();
+  const row = await findUserByPhone(phone);
   if (!row) return { error: "invalidCode" };
-  const r = row as { reset_code: string | null; reset_expires: string | null };
-  if (!r.reset_code || !safeEqual(r.reset_code, code)) {
-    return { error: "invalidCode" };
-  }
-  if (!r.reset_expires || new Date(r.reset_expires).getTime() < Date.now()) {
-    return { error: "invalidCode" };
-  }
+  const stored = String(row.reset_code ?? "");
+  const expiry = row.reset_expires ? new Date(String(row.reset_expires)) : null;
+  if (!stored || !safeEqual(stored, code)) return { error: "invalidCode" };
+  if (!expiry || expiry.getTime() < Date.now()) return { error: "invalidCode" };
+
   await supabase
     .from("users")
     .update({
@@ -258,7 +278,7 @@ export async function resetPasswordAction(
       reset_code: null,
       reset_expires: null,
     })
-    .eq("id", (row as { id: string }).id);
+    .eq("id", String(row.id));
   return { error: undefined } as FormState;
 }
 
@@ -297,6 +317,7 @@ export async function createMemorialAction(
     country: input.country,
     created_at: new Date().toISOString(),
   });
+  // A silent failure here used to hand the wizard an id that leads to a 404.
   if (error) return { error: "error" };
   return { id, slug };
 }
@@ -590,6 +611,7 @@ export async function placeOrderAction(
     status: input.payment_method === "cash" ? "pending" : "paid",
     created_at: new Date().toISOString(),
   });
+  // Never report an order id the database refused to store.
   if (error) return { error: "error" };
   await supabase.from("memorials").update({ status: "published" }).eq("id", memorial.id);
   // The dashboard route is "/[lang]/dashboard" — a literal "/dashboard" path

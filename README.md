@@ -7,7 +7,9 @@ QR kod üretilir ve plaka üzerine basılmak üzere indirilir.
 ## Özellikler
 
 - **4 dilli arayüz**: Arapça (RTL), Kürtçe (RTL), İngilizce, Türkçe
-- **Hesap sistemi**: kayıt / giriş (çerez tabanlı oturum, scrypt ile şifre hashleme)
+- **Hesap sistemi**: kayıt / giriş **telefon numarasıyla** (e-posta yok; çerez
+  tabanlı oturum, scrypt ile şifre hashleme). Normal girişte doğrulama
+  kodu **istemez** — kod yalnızca şifre unutulduğunda SMS ile gönderilir
 - **Sihirbaz (5 adım)**:
   1. Kişi bilgileri (ad, doğum/ölüm yılı, yaş, şehir, ülke)
   2. Hayat bilgileri (okul, üniversite, meslek, hobi, anılar, alıntı)
@@ -43,8 +45,9 @@ implementasyonuna karşı birebir doğrular; `s3.ts` değişikliklerinde çalı�
 ADMIN_KEY=admin123        # yönetim paneli anahtarı
 GROQ_API_KEY=...          # isteğe bağlı, ücretsiz Groq anahtarı
 GEMINI_API_KEY=...        # isteğe bağlı, ücretsiz Gemini anahtarı
-SMS_PROVIDER=...          # twilio|vonage|whatsapp|webhook (isteğe bağlı)
-SMS_WEBHOOK_URL=...       # isteğe bağlı, şifre sıfırlama için (07'li numaralar)
+TEXTBEE_API_KEY=...       # şifre sıfırlama SMS'i için (ÖNERİLEN, textbee.dev)
+TEXTBELT_KEY=...          # yedek SMS sağlayıcısı (textbelt.com, ücretli anahtar)
+SMS_PROVIDER=...          # isteğe bağlı sağlayıcı seçimi: textbee|twilio|vonage|whatsapp|webhook|textbelt
 
 # Supabase (zorunlu) — https://supabase.com (free plan)
 NEXT_PUBLIC_SUPABASE_URL=...
@@ -59,6 +62,39 @@ S3_SECRET_ACCESS_KEY=...
 S3_BUCKET=qrmakbarauploads
 # S3_PUBLIC_BASE=...   # yalnızca PUBLIC bucket/is your CDN varsa; private bucket'ta boş bırakın
 ```
+
+### Telefon numarasıyla giriş ve SMS doğrulama
+
+- **Kayıt ve giriş tamamen telefon numarasıyla** yapılır; e-posta alanı
+  yoktur. Numara her yazım biçimiyle tanınır (`+964 770 …`, `0770…`,
+  `00964…`, `964…`) — normalleştirme `src/lib/phone.ts` içinde.
+- **Normal girişte doğrulama kodu istenmez.** Kod yalnızca "Şifremi
+  unuttum" akışında gönderilir (`src/lib/sms.ts`).
+- SMS sağlayıcısı (`src/lib/sms.ts`, env ile seçilir):
+  - **textbee.dev** (önerilen, `TEXTBEE_API_KEY`): kendi Android
+    telefonunuz SMS kapısı olur. **Ücretsiz, kart istemez** — 300 SMS/ay,
+    50/gün. Kurulum: textbee.dev/register → panelden API anahtarı oluşturun →
+    [APK](https://textbee.dev/download) telefonunuza kurup QR ile eşleştirin.
+    Telefon internete bağlı değilse SMS çıkmaz.
+  - **Textbelt** (yedek, `TEXTBELT_KEY`): `TEXTBEE_API_KEY` yoksa devreye
+    girer. Ücretsiz anahtar ülke engeli nedeniyle kapalı; çalışması için
+    textbelt.com'dan ücretli anahtar alın (kuruşlar seviyesinde).
+  - Alternatif ücretli sağlayıcılar (`SMS_PROVIDER` ile veya kimlik
+    bilgisi bulunca otomatik seçilir):
+    - **twilio**: `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `SMS_FROM`
+      (Irak'ta gönderen kimliği harf-rakam karışımı ve ≤11 karakter olmalı;
+      Arapça mesaj UCS-2 olduğu için ≤70 karakter tek segmentte gider).
+    - **vonage**: `VONAGE_API_KEY` + `VONAGE_API_SECRET` + `SMS_FROM`.
+    - **whatsapp**: `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID`
+      (onaylı Authentication şablonu gerektirir).
+    - **webhook**: `SMS_WEBHOOK_URL` (+ isteğe bağlı `SMS_WEBHOOK_TOKEN`) —
+      herhangi bir relaya/gateway'e JSON POST atar.
+  - Kod gönderilemezse arayüz "Kod gönderilemedi" hatası gösterir ve
+    (yalnızca geliştirme ortamında) kod sunucu loguna yazılır.
+- Şema: `users.email` nullable olmalıdır. Eski bir veritabanında bir kez:
+  `alter table users alter column email drop not null;`
+  (kolon hâlâ `not null` ise kayıt `<telefon>@phone.invalid` üretir —
+  kayıt yine çalışır, elle SQL çalıştırmak gerekmez.)
 
 ### Medya depolama nasıl çalışır?
 
@@ -188,7 +224,8 @@ Storage'da, videolar (`S3_*` yapılandırıldıysa) Backblaze B2'de saklanır. G
      (üretimde `admin123` devre dışıdır — mutlaka güçlü bir değer verin)
    - videolar için: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
      `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`
-   - isteğe bağlı: `GROQ_API_KEY` / `GEMINI_API_KEY`, `SMS_PROVIDER`/`TWILIO_*`/`VONAGE_*`/`WHATSAPP_*`/`SMS_WEBHOOK_URL`
+   - isteğe bağlı: `GROQ_API_KEY` / `GEMINI_API_KEY`, `TEXTBEE_API_KEY`,
+     `TEXTBELT_KEY`, `SMS_PROVIDER`/`TWILIO_*`/`VONAGE_*`/`WHATSAPP_*`/`SMS_WEBHOOK_URL`
 3. **Deploy** → build `npm run build` ile tamamlanır. Uzun süren server
    action'lar (AI hikâye üretimi) için `maxDuration = 120`
    (`src/app/[lang]/layout.tsx`) tanımlıdır.

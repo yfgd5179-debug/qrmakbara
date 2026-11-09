@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { resetPasswordAction } from "@/lib/actions";
-import { normalizePhone } from "@/lib/phone";
 
 export function ResetForm({
   lang,
@@ -14,7 +13,13 @@ export function ResetForm({
   const t = (dict as { auth: Record<string, string> }).auth;
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
-  const [phone, setPhone] = useState("");
+
+  const errorMessages: Record<string, string> = {
+    phone: t.invalidPhone,
+    password: t.passwordHint,
+    send: t.sendFailed,
+    invalidCode: t.invalidCode,
+  };
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -42,11 +47,7 @@ export function ResetForm({
         )}
         {status === "error" && error && (
           <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {error === "phone"
-              ? t.invalidPhone
-              : error === "password"
-                ? t.passwordHint
-                : (t[error] ?? t.invalidCode)}
+            {errorMessages[error] ?? t.invalidCode}
           </p>
         )}
         <form onSubmit={submit} className="mt-6 space-y-4">
@@ -56,16 +57,10 @@ export function ResetForm({
               id="phone"
               name="phone"
               type="tel"
-              inputMode="tel"
               className="input"
               dir="ltr"
-              value={phone}
-              onChange={(e) => setPhone(normalizePhone(e.target.value))}
-              placeholder="07XX XXX XXXX"
-              pattern="07[0-9]{9}"
-              title={t.phoneHint}
-              maxLength={11}
               autoComplete="tel"
+              inputMode="tel"
               required
             />
           </div>

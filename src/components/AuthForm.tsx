@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import Link from "next/link";
-import { loginAction, registerAction } from "@/lib/actions";
+import {
+  loginAction,
+  registerAction,
+} from "@/lib/actions";
 import { COUNTRY_CODES, type Dict } from "@/lib/dict";
-import { normalizePhone } from "@/lib/phone";
 
 export function AuthForm({
   mode,
@@ -17,19 +19,16 @@ export function AuthForm({
 }) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction, pending] = useActionState(action, null);
-  // Phone is the sign-in identifier, so it is normalized while typing:
-  // "+964 770 123 4567" and "00964 770…" both become "07701234567".
-  const [phone, setPhone] = useState("");
 
   const t = dict.auth;
   const errors: Record<string, string> = {
     invalid: t.invalid,
-    phoneExists: t.phoneExists,
+    exists: t.exists,
     phone: t.invalidPhone,
     password: t.invalid,
     name: t.fullName,
     rate: t.rateLimit,
-    error: dict.common.error,
+    failed: dict.common.error,
   };
   const errorText = state?.error ? errors[state.error] : null;
 
@@ -53,25 +52,21 @@ export function AuthForm({
 
           <div>
             <label className="label" htmlFor="phone">
-              {t.phone} *
+              {t.phone}
             </label>
+            {/* The phone number is the account identifier. type="tel" keeps the
+                numeric keypad on mobile; sign-in never asks for a code. */}
             <input
               id="phone"
               name="phone"
               type="tel"
-              inputMode="tel"
               className="input"
               dir="ltr"
-              value={phone}
-              onChange={(e) => setPhone(normalizePhone(e.target.value))}
-              placeholder="07XX XXX XXXX"
-              pattern="07[0-9]{9}"
-              title={t.phoneHint}
-              maxLength={11}
+              placeholder={mode === "register" ? "+964 770 000 0000" : undefined}
               autoComplete={mode === "login" ? "username" : "tel"}
+              inputMode="tel"
               required
             />
-            <p className="mt-1 text-xs text-slate-500">{t.phoneHint}</p>
           </div>
 
           <div>
@@ -84,8 +79,8 @@ export function AuthForm({
               type="password"
               className="input"
               dir="ltr"
-              minLength={mode === "register" ? 6 : undefined}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
+              minLength={mode === "register" ? 6 : undefined}
               required
             />
             {mode === "register" && (

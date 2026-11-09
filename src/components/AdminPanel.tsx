@@ -4,7 +4,6 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { adminLogoutAction, adminSetOrderStatusAction } from "@/lib/actions";
-import { formatPrice } from "@/lib/commerce";
 import type { Dict } from "@/lib/dict";
 import type { Memorial, Order, User } from "@/lib/types";
 
@@ -36,7 +35,7 @@ export function AdminPanel({
   dict: Dict;
   lang: string;
   orders: AdminOrder[];
-  memorials: (Memorial & { user_phone: string; user_name: string })[];
+  memorials: (Memorial & { user_phone: string })[];
   users: User[];
 }) {
   const t = dict.admin;
@@ -109,9 +108,7 @@ export function AdminPanel({
       if (o.status === "cancelled") continue;
       by.set(o.currency, (by.get(o.currency) ?? 0) + o.amount);
     }
-    return [...by.entries()]
-      .map(([cur, amt]) => formatPrice(amt, cur))
-      .join(" · ");
+    return [...by.entries()].map(([cur, amt]) => `${amt} ${cur}`).join(" · ");
   }, [orders]);
 
   function exportCsv() {
@@ -286,7 +283,7 @@ export function AdminPanel({
                         : dict.wizard.online}
                   </td>
                   <td className="p-3 text-slate-200" dir="ltr">
-                    {formatPrice(o.amount, o.currency)}
+                    {o.amount} {o.currency}
                   </td>
                   <td className="p-3">
                     <div className="flex flex-col items-start gap-1.5">
@@ -374,7 +371,7 @@ export function AdminPanel({
                 >
                   <span className="font-medium">{u.name}</span>
                   <div className="text-xs text-slate-500" dir="ltr">
-                    {u.phone} · {u.country}
+                    {u.phone || "—"} · {u.country}
                   </div>
                 </li>
               ))}

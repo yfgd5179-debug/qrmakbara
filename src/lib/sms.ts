@@ -5,11 +5,16 @@
  * Transports are supported and selected by `SMS_PROVIDER` (or
  * auto-detected from whichever credentials are present):
  *
+ *   textbee   TEXTBEE_API_KEY — https://textbee.dev, the site's default: your
+ *             own Android phone is the SMS gateway (free plan, 300 SMS/month,
+ *             no card). The phone must run the textbee app and be online.
  *   twilio    TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + SMS_FROM
  *   vonage    VONAGE_API_KEY + VONAGE_API_SECRET + SMS_FROM
  *   webhook   SMS_WEBHOOK_URL (+ optional SMS_WEBHOOK_TOKEN) — any relay/gateway
  *   whatsapp  WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID (+ optional
  *             WHATSAPP_TEMPLATE_NAME/WHATSAPP_TEMPLATE_LANG/WHATSAPP_API_VERSION)
+ *   textbelt  TEXTBELT_KEY — https://textbelt.com pay-per-SMS fallback (the
+ *             free "textbelt" key is disabled for most countries).
  *
  * For Iraq, Twilio requires an **alphanumeric sender ID** (SMS_FROM, ≤11 chars,
  * at least one letter): numeric IDs are rejected by Zain/Asiacell, and Asiacell
@@ -23,7 +28,13 @@
  * it can be unit-tested against a stubbed `fetch` (see tests/sms.test.mjs).
  */
 
-export type SmsProvider = "twilio" | "vonage" | "webhook" | "whatsapp";
+export type SmsProvider =
+  | "textbee"
+  | "twilio"
+  | "vonage"
+  | "webhook"
+  | "whatsapp"
+  | "textbelt";
 
 export type SmsOutcome = { ok: boolean; provider: SmsProvider | "" };
 
@@ -42,17 +53,22 @@ function basicAuth(user: string, secret: string): string {
 export function smsProvider(): SmsProvider | "" {
   const configured = env("SMS_PROVIDER").toLowerCase();
   if (
+    configured === "textbee" ||
     configured === "twilio" ||
     configured === "vonage" ||
     configured === "webhook" ||
-    configured === "whatsapp"
+    configured === "whatsapp" ||
+    configured === "textbelt"
   ) {
     return configured;
   }
+  // Auto-detection prefers the free self-hosted gateway, then the paid ones.
+  if (env("TEXTBEE_API_KEY")) return "textbee";
   if (env("WHATSAPP_TOKEN") && env("WHATSAPP_PHONE_NUMBER_ID")) return "whatsapp";
   if (env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN")) return "twilio";
   if (env("VONAGE_API_KEY") && env("VONAGE_API_SECRET")) return "vonage";
   if (env("SMS_WEBHOOK_URL")) return "webhook";
+  if (env("TEXTBELT_KEY")) return "textbelt";
   return "";
 }
 
@@ -66,6 +82,29 @@ export async function sendSms(to: string, message: string): Promise<SmsOutcome> 
   if (!provider || !to) return { ok: false, provider: "" };
 
   try {
+    if (provider === "textbee") {
+      const key = env("TEXTBEE_API_KEY");
+      if (!key) return { ok: false, provider };
+
+      const res = await fetch("https://api.textbee.dev/api/v1/gateway/send-sms", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": key,
+        },
+        body: JSON.stringify({ recipients: [to], message }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) return { ok: false, provider };
+      // API answers { data: { success: true, smsBatchId, ... } } on accepted
+      // batches (some SDK versions answer at the root) — accept both shapes.
+      const data = (await res.json()) as {
+        success?: boolean;
+        data?: { success?: boolean };
+      };
+      return { ok: data.success === true || data.data?.success === true, provider };
+    }
+
     if (provider === "twilio") {
       const sid = env("TWILIO_ACCOUNT_SID");
       const token = env("TWILIO_AUTH_TOKEN");
@@ -170,6 +209,21 @@ export async function sendSms(to: string, message: string): Promise<SmsOutcome> 
       return { ok: true, provider };
     }
 
+    if (provider === "textbelt") {
+      const key = env("TEXTBELT_KEY");
+      if (!key) return { ok: false, provider };
+
+      const res = await fetch("https://textbelt.com/text", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ phone: to, message, key }).toString(),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) return { ok: false, provider };
+      const data = (await res.json()) as { success?: boolean };
+      return { ok: data.success === true, provider };
+    }
+
     const url = env("SMS_WEBHOOK_URL");
     if (!url) return { ok: false, provider };
     const token = env("SMS_WEBHOOK_TOKEN");
@@ -190,7 +244,8 @@ export async function sendSms(to: string, message: string): Promise<SmsOutcome> 
 
 /**
  * Reset-code message kept under 70 characters so Arabic (UCS-2) still fits in
- * one billed SMS segment.
+ * one billed SMS segment. The app normally builds a localized message from the
+ * dictionary; this is the language-neutral default (and what the tests assert).
  */
 export function resetCodeMessage(code: string): string {
   return `QR Makbara: رمز الاستعادة ${code} · صالح 10 دقائق`;
