@@ -12,10 +12,12 @@ export function AuthForm({
   mode,
   dict,
   lang,
+  notice,
 }: {
   mode: "login" | "register";
   dict: Dict;
   lang: string;
+  notice?: string;
 }) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction, pending] = useActionState(action, null);
@@ -38,6 +40,11 @@ export function AuthForm({
         <h1 className="text-2xl font-bold text-white">
           {mode === "login" ? t.loginTitle : t.registerTitle}
         </h1>
+        {notice && (
+          <p className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+            {notice}
+          </p>
+        )}
 
         <form action={formAction} className="mt-6 space-y-4">
           <input type="hidden" name="lang" value={lang} />

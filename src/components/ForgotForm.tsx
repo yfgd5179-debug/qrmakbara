@@ -6,9 +6,11 @@ import { requestResetAction } from "@/lib/actions";
 export function ForgotForm({
   lang,
   dict,
+  expired = false,
 }: {
   lang: string;
   dict: Record<string, unknown>;
+  expired?: boolean;
 }) {
   const t = (dict as { auth: Record<string, string> }).auth;
   const [state, formAction, pending] = useActionState(requestResetAction, null);
@@ -25,15 +27,10 @@ export function ForgotForm({
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="card p-8">
         <h1 className="text-2xl font-bold text-white">{t.forgotTitle}</h1>
-        {state && !err && (
-          <div className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-            <p>{t.forgotSent}</p>
-            <p className="mt-2">
-              <a href={`/${lang}/reset`} className="text-gold underline">
-                {t.resetTitle} →
-              </a>
-            </p>
-          </div>
+        {expired && (
+          <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            {t.sessionExpired}
+          </p>
         )}
         {err && (
           <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">

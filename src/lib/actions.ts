@@ -2,6 +2,7 @@
 
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generateStory } from "./ai";
 import {
@@ -19,14 +20,20 @@ import {
 } from "./auth";
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { supabase, newId, parseList } from "./db";
-import { getDict, hasLocale } from "./dict";
+import { hasLocale } from "./dict";
 import { canonicalPhone, isValidPhone, phoneDigits, phoneVariants } from "./phone";
 import { hit, clientIp } from "./ratelimit";
+import {
+  RESET_OK_COOKIE,
+  RESET_PHONE_COOKIE,
+  resetCookieOptions,
+  resetOkToken,
+} from "./reset";
 import { s3CanonicalUrl, s3Configured, s3Delete, s3Exists, s3KeyFromUrl, s3SignedUrl } from "./s3";
-import { sendSms } from "./sms";
+import { resetCodeMessage, sendSms } from "./sms";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
 
-export type FormState = { error?: string } | null;
+export type FormState = { error?: string; ok?: boolean } | null;
 
 function slugify(name: string): string {
   const base = name
@@ -204,72 +211,140 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Sends the reset code by SMS. This is the only place in the app that
- * verifies a phone number — signing in never asks for a code.
+ * Generates a fresh code, stores it and sends it. Shared by the initial
+ * request and the "send again" button on the code screen.
+ *
+ * The SMS body is ALWAYS Arabic (`resetCodeMessage`) — the app's default
+ * language — so every customer receives the same wording no matter which
+ * interface language they happen to be browsing in.
+ */
+async function issueResetCode(phone: string): Promise<FormState> {
+  const key = canonicalPhone(phone);
+  if (tooMany(key, resetRequests, MAX_RESET_REQUESTS)) return { error: "rate" };
+
+  const row = await findUserByPhone(phone);
+  // Always answer the same way for unknown numbers, so the form cannot be
+  // used to discover which phone numbers have an account.
+  if (!row) return null;
+
+  const code = String(randomInt(100000, 1000000));
+  const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await supabase
+    .from("users")
+    .update({ reset_code: code, reset_expires: expires })
+    .eq("id", String(row.id));
+
+  // sendSms takes E.164 and never throws; a stored legacy number ("0770…")
+  // is canonicalized here so the gateway always receives "+964…".
+  const to = canonicalPhone(String(row.phone) || phone);
+  const outcome = await sendSms(to, resetCodeMessage(code));
+  if (!to || !outcome.ok) {
+    // Gateway refused or is not configured. The code is NEVER returned to
+    // the client — it is logged server-side for local development only, so
+    // support can pass it on when a customer calls.
+    console.warn(`[reset] SMS not sent to ${key} (${outcome.provider || "unconfigured"})`);
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[reset] code for ${key}: ${code}`);
+    }
+    return { error: "send" };
+  }
+  return null;
+}
+
+/** Requested interface language, falling back to the default Arabic. */
+function langOf(formData: FormData): string {
+  const lang = String(formData.get("lang") ?? "ar");
+  return hasLocale(lang) ? lang : "ar";
+}
+
+/**
+ * Step 1 — the only place that asks for a phone number. On success the number
+ * is remembered in an httpOnly cookie and the visitor is sent straight to the
+ * code screen; they never type it again.
  */
 export async function requestResetAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
   const phone = String(formData.get("phone") ?? "").trim();
-  const lang = String(formData.get("lang") ?? "ar");
   if (!isValidPhone(phone)) return { error: "phone" };
 
-  const key = canonicalPhone(phone);
-  if (tooMany(key, resetRequests, MAX_RESET_REQUESTS)) return { error: "rate" };
+  const failure = await issueResetCode(phone);
+  if (failure) return failure;
 
-  const row = await findUserByPhone(phone);
-  // Always respond the same way for unknown numbers, so the form cannot be
-  // used to discover which phone numbers have an account.
-  if (row) {
-    const code = String(randomInt(100000, 1000000));
-    const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    await supabase
-      .from("users")
-      .update({ reset_code: code, reset_expires: expires })
-      .eq("id", String(row.id));
-
-    const dict = getDict(hasLocale(lang) ? lang : "ar");
-    const message = `QR Makbara — ${dict.auth.resetCode}: ${code}`;
-    // sendSms takes E.164 and never throws; a stored legacy number ("0770…")
-    // is canonicalized here so the gateway always receives "+964…".
-    const to = canonicalPhone(String(row.phone) || phone);
-    const outcome = await sendSms(to, message);
-    if (!to || !outcome.ok) {
-      // Gateway refused or is not configured. The code is NEVER returned to
-      // the client — it is logged server-side for local development only, so
-      // support can pass it on when a customer calls.
-      console.warn(
-        `[reset] SMS not sent to ${key} (${outcome.provider || "unconfigured"})`
-      );
-      if (process.env.NODE_ENV !== "production") {
-        console.warn(`[reset] code for ${key}: ${code}`);
-      }
-      return { error: "send" };
-    }
-  }
-  return { error: undefined } as FormState;
+  const jar = await cookies();
+  jar.set(RESET_PHONE_COOKIE, canonicalPhone(phone), resetCookieOptions);
+  jar.delete(RESET_OK_COOKIE);
+  redirect(`/${langOf(formData)}/verify`);
 }
 
+/**
+ * Step 2 — verifies the 6-digit code (the number comes from the cookie, so
+ * this screen has no phone field) and, on success, mints the short-lived
+ * proof the password screen requires.
+ */
+export async function verifyCodeAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const jar = await cookies();
+  const phone = jar.get(RESET_PHONE_COOKIE)?.value ?? "";
+  const lang = langOf(formData);
+  if (!phone || !isValidPhone(phone)) redirect(`/${lang}/forgot?expired=1`);
+
+  const code = String(formData.get("code") ?? "").trim();
+  const key = canonicalPhone(phone);
+  if (tooMany(key, codeAttempts, MAX_CODE_ATTEMPTS)) return { error: "rate" };
+
+  const row = await findUserByPhone(phone);
+  const stored = row ? String(row.reset_code ?? "") : "";
+  const expiry = row?.reset_expires ? new Date(String(row.reset_expires)) : null;
+  if (!stored || !safeEqual(stored, code)) return { error: "invalidCode" };
+  if (!expiry || expiry.getTime() < Date.now()) return { error: "invalidCode" };
+
+  jar.set(RESET_OK_COOKIE, resetOkToken(key), resetCookieOptions);
+  redirect(`/${lang}/newpass`);
+}
+
+/** Sends a fresh code to the remembered number without leaving the code screen. */
+export async function resendCodeAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const jar = await cookies();
+  const phone = jar.get(RESET_PHONE_COOKIE)?.value ?? "";
+  const lang = langOf(formData);
+  if (!phone || !isValidPhone(phone)) redirect(`/${lang}/forgot?expired=1`);
+
+  const failure = await issueResetCode(phone);
+  if (failure) return failure;
+  return { ok: true };
+}
+
+/**
+ * Step 3 — sets the new password. Nothing else is asked: the number and the
+ * verified-code proof both come from the httpOnly cookies.
+ */
 export async function resetPasswordAction(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const phone = String(formData.get("phone") ?? "").trim();
-  const code = String(formData.get("code") ?? "").trim();
-  const password = String(formData.get("password") ?? "");
-  if (!isValidPhone(phone)) return { error: "phone" };
-  if (password.length < 6) return { error: "password" };
-  if (tooMany(canonicalPhone(phone), codeAttempts, MAX_CODE_ATTEMPTS)) {
-    return { error: "invalidCode" };
+  const jar = await cookies();
+  const phone = jar.get(RESET_PHONE_COOKIE)?.value ?? "";
+  const proof = jar.get(RESET_OK_COOKIE)?.value ?? "";
+  const lang = langOf(formData);
+  const key = canonicalPhone(phone);
+  if (!phone || !key || !proof || !safeEqual(proof, resetOkToken(key))) {
+    redirect(`/${lang}/forgot?expired=1`);
   }
 
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (password.length < 6) return { error: "password" };
+  if (password !== confirm) return { error: "mismatch" };
+
   const row = await findUserByPhone(phone);
-  if (!row) return { error: "invalidCode" };
-  const stored = String(row.reset_code ?? "");
-  const expiry = row.reset_expires ? new Date(String(row.reset_expires)) : null;
-  if (!stored || !safeEqual(stored, code)) return { error: "invalidCode" };
-  if (!expiry || expiry.getTime() < Date.now()) return { error: "invalidCode" };
+  if (!row) redirect(`/${lang}/forgot?expired=1`);
 
   await supabase
     .from("users")
@@ -279,7 +354,10 @@ export async function resetPasswordAction(
       reset_expires: null,
     })
     .eq("id", String(row.id));
-  return { error: undefined } as FormState;
+
+  jar.delete(RESET_PHONE_COOKIE);
+  jar.delete(RESET_OK_COOKIE);
+  redirect(`/${lang}/login?reset=1`);
 }
 
 /* ------------------------- memorials -------------------------- */
