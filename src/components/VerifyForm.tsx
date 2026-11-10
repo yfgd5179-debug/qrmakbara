@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import { resendCodeAction, verifyCodeAction } from "@/lib/actions";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * Step 2 of the password reset: a single 6-digit code field. The phone number
@@ -31,6 +33,11 @@ export function VerifyForm({
     err === "rate" ? t.rateLimit : err === "phone" ? t.invalidPhone : t.invalidCode;
   const resendErr = resendState && "error" in resendState ? resendState.error : undefined;
 
+  // Funnel: how many people who saw the code screen actually verified.
+  useEffect(() => {
+    trackEvent("reset_view", { step: "verify" });
+  }, []);
+
   return (
     <div className="mx-auto max-w-md px-4 py-8 sm:py-16">
       <div className="card p-5 sm:p-8">
@@ -58,7 +65,11 @@ export function VerifyForm({
           </p>
         )}
 
-        <form action={formAction} className="mt-6 space-y-4">
+        <form
+          action={formAction}
+          onSubmit={() => trackEvent("reset_submit", { step: "verify" })}
+          className="mt-6 space-y-4"
+        >
           <input type="hidden" name="lang" value={lang} />
           <div>
             <label className="label" htmlFor="code">

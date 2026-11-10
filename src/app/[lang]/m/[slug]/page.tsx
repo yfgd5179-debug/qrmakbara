@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Gallery } from "@/components/Gallery";
+import { TrackEvent } from "@/components/TrackEvent";
 import { getSession } from "@/lib/auth";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase, parseList } from "@/lib/db";
@@ -73,6 +74,9 @@ export default async function MemorialPage({
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12">
+      {/* Which memorials (and how often) are actually opened. Page views are
+          counted by Web Analytics too; this adds the slug + owner filter. */}
+      <TrackEvent name="memorial_view" props={{ slug, owner: isOwner }} />
       <header className="text-center">
         <div
           aria-hidden

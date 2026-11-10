@@ -19,6 +19,7 @@ import {
   verifyPassword,
 } from "./auth";
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
+import { trackEvent } from "./analytics.server";
 import { supabase, newId, parseList } from "./db";
 import { hasLocale } from "./dict";
 import { canonicalPhone, isValidPhone, lookupVariants, phoneDigits } from "./phone";
@@ -125,15 +126,22 @@ export async function registerAction(
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
 
-  if (!isValidPhone(phone)) return { error: "phone" };
-  if (password.length < 6) return { error: "password" };
-  if (!name) return { error: "name" };
+  // Outcome half of the register funnel (the view/submit half is tracked in
+  // AuthForm). Events carry no phone number — only the outcome code.
+  async function fail(error: string): Promise<FormState> {
+    await trackEvent("auth_error", { mode: "register", error });
+    return { error };
+  }
+
+  if (!isValidPhone(phone)) return fail("phone");
+  if (password.length < 6) return fail("password");
+  if (!name) return fail("name");
 
   // Cap sign-ups per IP to slow bulk account creation.
-  if (hit(`register:ip:${await clientIp()}`, 10)) return { error: "rate" };
+  if (hit(`register:ip:${await clientIp()}`, 10)) return fail("rate");
 
   // The phone number is the account identifier — it must be unique.
-  if (await findUserByPhone(phone)) return { error: "exists" };
+  if (await findUserByPhone(phone)) return fail("exists");
 
   const id = newId();
   const failure = await insertUser({
@@ -144,9 +152,10 @@ export async function registerAction(
     country,
     created_at: new Date().toISOString(),
   });
-  if (failure) return { error: failure };
+  if (failure) return fail(failure);
 
   await createSession(id);
+  await trackEvent("auth_success", { mode: "register" });
   redirect(home);
 }
 
@@ -159,7 +168,13 @@ export async function loginAction(
   const lang = String(formData.get("lang") ?? "ar");
   const home = hasLocale(lang) ? `/${lang}/dashboard` : "/ar/dashboard";
 
-  if (!phone || !password) return { error: "invalid" };
+  // Outcome half of the login funnel (view/submit half in AuthForm).
+  async function fail(error: string): Promise<FormState> {
+    await trackEvent("auth_error", { mode: "login", error });
+    return { error };
+  }
+
+  if (!phone || !password) return fail("invalid");
 
   // Throttle brute-force: per phone+IP, plus a looser per-IP cap. No OTP is
   // asked here — verification only happens when a password is reset.
@@ -168,14 +183,15 @@ export async function loginAction(
     hit(`login:phone:${canonicalPhone(phone) || phone.toLowerCase()}`, 10) ||
     hit(`login:ip:${ip}`, 30)
   ) {
-    return { error: "rate" };
+    return fail("rate");
   }
 
   const row = await findUserByPhone(phone);
   if (!row || !verifyPassword(password, String(row.password_hash ?? ""))) {
-    return { error: "invalid" };
+    return fail("invalid");
   }
   await createSession(String(row.id));
+  await trackEvent("auth_success", { mode: "login" });
   redirect(home);
 }
 
@@ -270,14 +286,20 @@ export async function requestResetAction(
   formData: FormData
 ): Promise<FormState> {
   const phone = String(formData.get("phone") ?? "").trim();
-  if (!isValidPhone(phone)) return { error: "phone" };
+  // Outcome half of the reset funnel (view/submit half in ForgotForm).
+  async function fail(error: string): Promise<FormState> {
+    await trackEvent("reset_error", { step: "forgot", error });
+    return { error };
+  }
+  if (!isValidPhone(phone)) return fail("phone");
 
   const failure = await issueResetCode(phone);
-  if (failure) return failure;
+  if (failure) return fail(failure.error ?? "send");
 
   const jar = await cookies();
   jar.set(RESET_PHONE_COOKIE, canonicalPhone(phone), resetCookieOptions);
   jar.delete(RESET_OK_COOKIE);
+  await trackEvent("reset_sent", { step: "forgot" });
   redirect(`/${langOf(formData)}/verify`);
 }
 
@@ -297,15 +319,21 @@ export async function verifyCodeAction(
 
   const code = String(formData.get("code") ?? "").trim();
   const key = canonicalPhone(phone);
-  if (tooMany(key, codeAttempts, MAX_CODE_ATTEMPTS)) return { error: "rate" };
+  // Outcome half of step 2 (view/submit half in VerifyForm).
+  async function fail(error: string): Promise<FormState> {
+    await trackEvent("reset_error", { step: "verify", error });
+    return { error };
+  }
+  if (tooMany(key, codeAttempts, MAX_CODE_ATTEMPTS)) return fail("rate");
 
   const row = await findUserByPhone(phone);
   const stored = row ? String(row.reset_code ?? "") : "";
   const expiry = row?.reset_expires ? new Date(String(row.reset_expires)) : null;
-  if (!stored || !safeEqual(stored, code)) return { error: "invalidCode" };
-  if (!expiry || expiry.getTime() < Date.now()) return { error: "invalidCode" };
+  if (!stored || !safeEqual(stored, code)) return fail("invalidCode");
+  if (!expiry || expiry.getTime() < Date.now()) return fail("invalidCode");
 
   jar.set(RESET_OK_COOKIE, resetOkToken(key), resetCookieOptions);
+  await trackEvent("reset_verified", { step: "verify" });
   redirect(`/${lang}/newpass`);
 }
 
@@ -320,7 +348,11 @@ export async function resendCodeAction(
   if (!phone || !isValidPhone(phone)) redirect(`/${lang}/forgot?expired=1`);
 
   const failure = await issueResetCode(phone);
-  if (failure) return failure;
+  if (failure) {
+    await trackEvent("reset_error", { step: "resend", error: failure.error ?? "send" });
+    return failure;
+  }
+  await trackEvent("reset_sent", { step: "resend" });
   return { ok: true };
 }
 
@@ -343,8 +375,13 @@ export async function resetPasswordAction(
 
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
-  if (password.length < 6) return { error: "password" };
-  if (password !== confirm) return { error: "mismatch" };
+  // Outcome half of step 3 (view/submit half in NewPasswordForm).
+  async function fail(error: string): Promise<FormState> {
+    await trackEvent("reset_error", { step: "newpass", error });
+    return { error };
+  }
+  if (password.length < 6) return fail("password");
+  if (password !== confirm) return fail("mismatch");
 
   const row = await findUserByPhone(phone);
   if (!row) redirect(`/${lang}/forgot?expired=1`);
@@ -360,6 +397,7 @@ export async function resetPasswordAction(
 
   jar.delete(RESET_PHONE_COOKIE);
   jar.delete(RESET_OK_COOKIE);
+  await trackEvent("reset_done", { step: "newpass" });
   redirect(`/${lang}/login?reset=1`);
 }
 
@@ -655,24 +693,31 @@ export type CheckoutInput = {
 export async function placeOrderAction(
   input: CheckoutInput
 ): Promise<{ orderId: string; slug: string } | { error: string }> {
+  // Outcome half of the checkout funnel (the submit half is tracked in the
+  // wizard). Never includes contact details — only the outcome code.
+  async function fail(error: string): Promise<{ error: string }> {
+    await trackEvent("order_error", { error });
+    return { error };
+  }
+
   const user = await getSession();
-  if (!user) return { error: "auth" };
+  if (!user) return fail("auth");
 
   const memorial = await getMemorial(input.memorial_id, user.id);
-  if (!memorial) return { error: "auth" };
+  if (!memorial) return fail("auth");
   if (!input.contact_name.trim() || !input.phone.trim() || !input.address.trim()) {
-    return { error: "required" };
+    return fail("required");
   }
 
   const allowed = paymentMethods(input.country);
-  if (!allowed.includes(input.payment_method)) return { error: "method" };
+  if (!allowed.includes(input.payment_method)) return fail("method");
 
   if (input.payment_method !== "cash") {
     const digits = (input.card_number ?? "").replace(/\s+/g, "");
-    if (!/^\d{13,19}$/.test(digits)) return { error: "card" };
-    if (!input.card_holder?.trim()) return { error: "card" };
-    if (!/^\d{2}\/\d{2}$/.test(input.card_expiry ?? "")) return { error: "card" };
-    if (!/^\d{3,4}$/.test(input.card_cvv ?? "")) return { error: "card" };
+    if (!/^\d{13,19}$/.test(digits)) return fail("card");
+    if (!input.card_holder?.trim()) return fail("card");
+    if (!/^\d{2}\/\d{2}$/.test(input.card_expiry ?? "")) return fail("card");
+    if (!/^\d{3,4}$/.test(input.card_cvv ?? "")) return fail("card");
   }
 
   const { amount, currency } = priceFor(input.country);
@@ -693,8 +738,13 @@ export async function placeOrderAction(
     created_at: new Date().toISOString(),
   });
   // Never report an order id the database refused to store.
-  if (error) return { error: "error" };
+  if (error) return fail("error");
   await supabase.from("memorials").update({ status: "published" }).eq("id", memorial.id);
+  await trackEvent("order_success", {
+    method: input.payment_method,
+    amount,
+    currency,
+  });
   // The dashboard route is "/[lang]/dashboard" — a literal "/dashboard" path
   // matches nothing and would silently skip the revalidation.
   revalidatePath("/[lang]/dashboard", "page");

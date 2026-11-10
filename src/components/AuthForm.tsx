@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import {
   loginAction,
   registerAction,
 } from "@/lib/actions";
+import { trackEvent } from "@/lib/analytics";
 import { COUNTRY_CODES, type Dict } from "@/lib/dict";
 
 export function AuthForm({
@@ -21,6 +23,11 @@ export function AuthForm({
 }) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction, pending] = useActionState(action, null);
+
+  // Funnel step 1: the form was actually seen (vs. bounced before it).
+  useEffect(() => {
+    trackEvent("auth_view", { mode });
+  }, [mode]);
 
   const t = dict.auth;
   const errors: Record<string, string> = {
@@ -46,7 +53,13 @@ export function AuthForm({
           </p>
         )}
 
-        <form action={formAction} className="mt-6 space-y-4">
+        {/* onSubmit fires only when HTML5 validation passed, so this counts
+            real attempts; the server records auth_success / auth_error. */}
+        <form
+          action={formAction}
+          onSubmit={() => trackEvent("auth_submit", { mode })}
+          className="mt-6 space-y-4"
+        >
           <input type="hidden" name="lang" value={lang} />
           {mode === "register" && (
             <div>

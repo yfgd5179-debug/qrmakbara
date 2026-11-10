@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import { resetPasswordAction } from "@/lib/actions";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * Step 3 of the password reset: only the new password (twice) is asked — the
@@ -22,6 +24,11 @@ export function NewPasswordForm({
   const err = state && "error" in state ? state.error : undefined;
   const errorMessage = err === "mismatch" ? t.passwordMismatch : t.passwordHint;
 
+  // Funnel: reached the final reset screen vs. actually finishing.
+  useEffect(() => {
+    trackEvent("reset_view", { step: "newpass" });
+  }, []);
+
   return (
     <div className="mx-auto max-w-md px-4 py-8 sm:py-16">
       <div className="card p-5 sm:p-8">
@@ -33,7 +40,11 @@ export function NewPasswordForm({
           </p>
         )}
 
-        <form action={formAction} className="mt-6 space-y-4">
+        <form
+          action={formAction}
+          onSubmit={() => trackEvent("reset_submit", { step: "newpass" })}
+          className="mt-6 space-y-4"
+        >
           <input type="hidden" name="lang" value={lang} />
           <div>
             <label className="label" htmlFor="password">

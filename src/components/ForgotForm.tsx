@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { useActionState } from "react";
 import { requestResetAction } from "@/lib/actions";
+import { trackEvent } from "@/lib/analytics";
 
 export function ForgotForm({
   lang,
@@ -15,6 +17,11 @@ export function ForgotForm({
   const t = (dict as { auth: Record<string, string> }).auth;
   const [state, formAction, pending] = useActionState(requestResetAction, null);
   const err = state && "error" in state ? state.error : undefined;
+
+  // Funnel: reset_view{step} vs reset_sent/reset_error — drop-off per step.
+  useEffect(() => {
+    trackEvent("reset_view", { step: "forgot" });
+  }, []);
   const errorMessage =
     err === "rate"
       ? t.rateLimit
@@ -37,7 +44,11 @@ export function ForgotForm({
             {errorMessage}
           </p>
         )}
-        <form action={formAction} className="mt-6 space-y-4">
+        <form
+          action={formAction}
+          onSubmit={() => trackEvent("reset_submit", { step: "forgot" })}
+          className="mt-6 space-y-4"
+        >
           <input type="hidden" name="lang" value={lang} />
           <div>
             <label className="label" htmlFor="phone">{t.phone}</label>

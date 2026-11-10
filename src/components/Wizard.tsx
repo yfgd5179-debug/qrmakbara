@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   createMemorialAction,
@@ -11,6 +11,7 @@ import {
   removeMediaAction,
   updateMemorialAction,
 } from "@/lib/actions";
+import { trackEvent } from "@/lib/analytics";
 import {
   formatPrice,
   paymentMethods,
@@ -127,6 +128,12 @@ export function Wizard({ lang, dict, user, initial }: Props) {
 
   const methods = paymentMethods(contact.country);
   const price = priceFor(contact.country);
+
+  // Funnel: which wizard step each visitor actually reaches. Steps are
+  // reported 1–5 (the UI numbering), so a drop between 2 and 3 is visible.
+  useEffect(() => {
+    trackEvent("wizard_view", { step: step + 1 });
+  }, [step]);
 
   function fail(code: string) {
     const map: Record<string, string> = {
@@ -320,6 +327,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
   async function submitOrder() {
     setError(null);
     if (!id) return;
+    trackEvent("order_submit", { method: payMethod });
     setBusy(true);
     try {
       const res = await placeOrderAction({

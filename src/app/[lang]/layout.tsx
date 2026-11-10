@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import "../globals.css";
 import { LangSwitcher } from "@/components/LangSwitcher";
+import { WebAnalytics } from "@/components/WebAnalytics";
 import { logoutAction } from "@/lib/actions";
 import { getSession } from "@/lib/auth";
 import { getDict, hasLocale, isRtl } from "@/lib/dict";
@@ -126,6 +127,9 @@ export default async function RootLayout({
             </div>
           </div>
         </footer>
+
+        {/* Page views + custom funnel events (Vercel Web Analytics). */}
+        <WebAnalytics />
       </body>
     </html>
   );
