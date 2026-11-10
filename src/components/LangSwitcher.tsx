@@ -44,11 +44,13 @@ export function LangSwitcher({
   return (
     <label className="flex items-center gap-1.5">
       <span className="sr-only">{label}</span>
+      {/* text-base (16px): anything smaller makes iOS Safari zoom in when
+          the select is focused. */}
       <select
         aria-label={label}
         value={current}
         onChange={(e) => switchTo(e.target.value as Locale)}
-        className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-200 outline-none"
+        className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2.5 text-base text-slate-200 outline-none"
       >
         {LOCALES.map((l) => (
           <option key={l} value={l}>

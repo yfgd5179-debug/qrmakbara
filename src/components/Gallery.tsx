@@ -18,6 +18,10 @@ export function Gallery({
   const [index, setIndex] = useState<number | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
+  // Swipe navigation — almost every visitor opens this on a phone.
+  const touchStart = useRef<number | null>(null);
+  const swiped = useRef(false);
+
   // Arrow keys follow the reading direction: in RTL layouts the visual
   // "next" button sits on the left, so ArrowLeft advances instead.
   useEffect(() => {
@@ -38,22 +42,46 @@ export function Gallery({
           i === null ? i : (i - 1 + photos.length) % photos.length
         );
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [index, photos.length]);
 
-  // Lock background scrolling while the lightbox is open.
+  // Move focus into the dialog when it opens so the close button is
+  // reachable, and return it to the thumbnail that was clicked.
   useEffect(() => {
-    if (index === null) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    if (index !== null) closeRef.current?.focus();
   }, [index]);
 
-  if (photos.length === 0) return null;
+  function onTouchStart(e: React.TouchEvent) {
+    touchStart.current = e.touches[0]?.clientX ?? null;
+    swiped.current = false;
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    if (start === null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? start) - start;
+    touchStart.current = null;
+    if (Math.abs(dx) < 45) return;
+    // Remember that this gesture was a swipe so the trailing tap doesn't
+    // close the lightbox.
+    swiped.current = true;
+    const rtl =
+      document.documentElement.dir === "rtl" ||
+      document.documentElement.lang === "ar" ||
+      document.documentElement.lang === "ku";
+    // The swipe points towards where the "next" control sits: left in LTR,
+    // right in RTL (mirroring the arrow-key behaviour above).
+    const forward = rtl ? dx > 0 : dx < 0;
+    setIndex((i) =>
+      i === null
+        ? i
+        : forward
+          ? (i + 1) % photos.length
+          : (i - 1 + photos.length) % photos.length
+    );
+  }
 
   return (
     <>
@@ -81,12 +109,21 @@ export function Gallery({
           aria-modal="true"
           aria-label={alt}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setIndex(null)}
+          onClick={() => {
+            // A swipe that ends on the backdrop must not close the lightbox.
+            if (swiped.current) {
+              swiped.current = false;
+              return;
+            }
+            setIndex(null);
+          }}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
         >
           <button
             ref={closeRef}
             aria-label={closeLabel}
-            className="absolute end-4 top-4 rounded-full border border-slate-600 px-3 py-1 text-slate-200 hover:bg-slate-800"
+            className="absolute end-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-slate-600 text-lg text-slate-200 hover:bg-slate-800"
             onClick={() => setIndex(null)}
           >
             ✕
@@ -102,7 +139,7 @@ export function Gallery({
             <>
               <button
                 aria-label={prevLabel ?? "Previous"}
-                className="absolute start-4 top-1/2 -translate-y-1/2 rounded-full bg-slate-800/80 px-4 py-3 text-white hover:bg-slate-700"
+                className="absolute start-4 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-slate-800/80 text-3xl leading-none text-white hover:bg-slate-700"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIndex((i) => ((i ?? 0) - 1 + photos.length) % photos.length);
@@ -112,7 +149,7 @@ export function Gallery({
               </button>
               <button
                 aria-label={nextLabel ?? "Next"}
-                className="absolute end-4 top-1/2 -translate-y-1/2 rounded-full bg-slate-800/80 px-4 py-3 text-white hover:bg-slate-700"
+                className="absolute end-4 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-slate-800/80 text-3xl leading-none text-white hover:bg-slate-700"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIndex((i) => ((i ?? 0) + 1) % photos.length);

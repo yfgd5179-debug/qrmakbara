@@ -431,10 +431,10 @@ export function MetalPlaque({
   }
 
   const secondaryBtn =
-    "rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400 disabled:opacity-50";
+    "btn-outline text-sm text-slate-200 hover:border-slate-400 disabled:opacity-50";
 
   return (
-    <div className="card p-6">
+    <div className="card p-4 sm:p-6">
       <h3 className="font-bold text-white">{labels.title}</h3>
       <p className="mt-1 text-sm text-slate-400">{labels.text}</p>
 
@@ -458,11 +458,11 @@ export function MetalPlaque({
         {url || "…"}
       </p>
 
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
         <button
           onClick={downloadPng}
           disabled={!art}
-          className="btn-gold !py-2 text-sm"
+          className="btn-gold text-sm"
         >
           {labels.png}
         </button>

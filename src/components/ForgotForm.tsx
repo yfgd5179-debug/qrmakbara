@@ -24,8 +24,8 @@ export function ForgotForm({
           ? t.sendFailed
           : t.invalidCode;
   return (
-    <div className="mx-auto max-w-md px-4 py-16">
-      <div className="card p-8">
+    <div className="mx-auto max-w-md px-4 py-8 sm:py-16">
+      <div className="card p-5 sm:p-8">
         <h1 className="text-2xl font-bold text-white">{t.forgotTitle}</h1>
         {expired && (
           <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">

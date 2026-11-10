@@ -35,8 +35,8 @@ export function AuthForm({
   const errorText = state?.error ? errors[state.error] : null;
 
   return (
-    <div className="mx-auto max-w-md px-4 py-16">
-      <div className="card p-8">
+    <div className="mx-auto max-w-md px-4 py-8 sm:py-16">
+      <div className="card p-5 sm:p-8">
         <h1 className="text-2xl font-bold text-white">
           {mode === "login" ? t.loginTitle : t.registerTitle}
         </h1>

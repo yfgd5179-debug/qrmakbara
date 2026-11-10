@@ -206,7 +206,7 @@ export function AdminPanel({
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t.search}
             aria-label={t.search}
-            className="input !w-auto flex-1 min-w-[200px]"
+            className="input w-auto! flex-1 min-w-[200px]"
           />
           <div className="flex flex-wrap gap-1.5">
             {(["all", ...STATUSES] as const).map((s) => (

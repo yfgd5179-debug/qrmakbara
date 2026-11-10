@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AuthForm } from "@/components/AuthForm";
+import { getSession } from "@/lib/auth";
 import { getDict, hasLocale } from "@/lib/dict";
 
 export default async function LoginPage({
@@ -8,6 +9,8 @@ export default async function LoginPage({
 }: PageProps<"/[lang]/login">) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
+  // Already signed in → straight to the dashboard (never the landing page).
+  if (await getSession()) redirect(`/${lang}/dashboard`);
   const sp = await searchParams;
   const dict = getDict(lang);
   return (

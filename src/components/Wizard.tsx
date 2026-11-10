@@ -338,17 +338,17 @@ export function Wizard({ lang, dict, user, initial }: Props) {
   const stepTitles = [w.s1Title, w.s2Title, w.s3Title, w.s4Title, w.s5Title];
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-center text-3xl font-bold text-white">
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:py-10">
+      <h1 className="text-center text-2xl font-bold text-white sm:text-3xl">
         {w.createTitle}
       </h1>
 
       {/* Progress */}
-      <div className="mt-6 flex items-center justify-center gap-2">
+      <div className="mt-6 flex items-center justify-center gap-1.5 sm:gap-2">
         {stepTitles.map((t, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="flex items-center gap-1.5 sm:gap-2">
             <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold sm:h-8 sm:w-8 ${
                 i <= step
                   ? "bg-gold text-slate-950"
                   : "bg-slate-800 text-slate-400"
@@ -358,7 +358,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
             </div>
             {i < STEPS - 1 && (
               <div
-                className={`h-px w-6 sm:w-10 ${i < step ? "bg-gold" : "bg-slate-700"}`}
+                className={`h-px w-4 sm:w-10 ${i < step ? "bg-gold" : "bg-slate-700"}`}
               />
             )}
           </div>
@@ -378,7 +378,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
         </div>
       )}
 
-      <div className="card mt-6 p-6 sm:p-8">
+      <div className="card mt-6 p-4 sm:p-7">
         {/* ---------------- Step 1: the person ---------------- */}
         {step === 0 && (
           <div className="space-y-4">
@@ -458,11 +458,11 @@ export function Wizard({ lang, dict, user, initial }: Props) {
               </p>
             )}
 
-            <div className="pt-2 text-end">
+            <div className="pt-2 sm:text-end">
               <button
                 onClick={nextFromPerson}
                 disabled={busy}
-                className="btn-gold"
+                className="btn-gold w-full sm:w-auto"
               >
                 {busy ? c.loading : c.next}
               </button>
@@ -564,14 +564,14 @@ export function Wizard({ lang, dict, user, initial }: Props) {
               />
             </div>
 
-            <div className="flex justify-between pt-2">
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
               <button
                 onClick={() => setStep(0)}
-                className="rounded-lg border border-slate-600 px-5 py-2.5 text-slate-200 hover:border-slate-400"
+                className="btn-outline w-full text-sm sm:w-auto"
               >
                 {c.back}
               </button>
-              <button onClick={nextFromLife} disabled={busy} className="btn-gold">
+              <button onClick={nextFromLife} disabled={busy} className="btn-gold w-full sm:w-auto">
                 {busy ? c.loading : c.next}
               </button>
             </div>
@@ -586,7 +586,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <span className="label !mb-0">{w.photos}</span>
+                <span className="label mb-0!">{w.photos}</span>
                 <span className="text-xs text-slate-500">{w.uploadHint}</span>
               </div>
               <input
@@ -594,7 +594,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                 type="file"
                 accept="image/*"
                 multiple
-                className="block w-full text-sm text-slate-400 file:me-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-4 file:py-2 file:text-slate-200"
+                className="block w-full text-sm text-slate-400 file:me-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-4 file:py-3 file:text-slate-200"
                 onChange={(e) => handleUpload("photos", e.target.files)}
                 disabled={!id || uploading}
               />
@@ -612,7 +612,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                       <button
                         onClick={() => handleRemove("photos", src)}
                         aria-label={c.cancel}
-                        className="absolute end-1 top-1 rounded-full bg-black/70 px-2 py-0.5 text-xs text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                        className="absolute end-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-sm text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                       >
                         ✕
                       </button>
@@ -629,7 +629,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                 type="file"
                 accept="video/*"
                 multiple
-                className="block w-full text-sm text-slate-400 file:me-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-4 file:py-2 file:text-slate-200"
+                className="block w-full text-sm text-slate-400 file:me-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-4 file:py-3 file:text-slate-200"
                 onChange={(e) => handleUpload("videos", e.target.files)}
                 disabled={!id || uploading}
               />
@@ -647,7 +647,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                       </span>
                       <button
                         onClick={() => handleRemove("videos", src)}
-                        className="text-red-400 hover:text-red-300"
+                        className="flex h-9 w-9 items-center justify-center text-red-400 hover:text-red-300"
                       >
                         ✕
                       </button>
@@ -661,10 +661,10 @@ export function Wizard({ lang, dict, user, initial }: Props) {
               <p className="text-sm text-gold">{w.uploading}</p>
             )}
 
-            <div className="flex justify-between pt-2">
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
               <button
                 onClick={() => setStep(1)}
-                className="rounded-lg border border-slate-600 px-5 py-2.5 text-slate-200 hover:border-slate-400"
+                className="btn-outline w-full text-sm sm:w-auto"
               >
                 {c.back}
               </button>
@@ -674,7 +674,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                   window.scrollTo({ top: 0 });
                 }}
                 disabled={busy || uploading}
-                className="btn-gold"
+                className="btn-gold w-full sm:w-auto"
               >
                 {uploading ? w.uploading : c.next}
               </button>
@@ -688,11 +688,11 @@ export function Wizard({ lang, dict, user, initial }: Props) {
             <h2 className="text-xl font-bold text-white">{w.s4Title}</h2>
             <p className="text-sm text-slate-400">{w.s4Text}</p>
 
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="w-full sm:w-auto">
                 <label className="label">{w.storyLang}</label>
                 <select
-                  className="input !w-48"
+                  className="input sm:w-48!"
                   value={storyLang}
                   onChange={(e) => setStoryLang(e.target.value as Locale)}
                 >
@@ -706,14 +706,14 @@ export function Wizard({ lang, dict, user, initial }: Props) {
               <button
                 onClick={writeStory}
                 disabled={busy || !id}
-                className="btn-gold"
+                className="btn-gold w-full sm:w-auto"
               >
                 {busy ? w.generating : story ? w.regenerate : w.generate}
               </button>
             </div>
 
             <textarea
-              className="input min-h-56 leading-relaxed"
+              className="input min-h-44 leading-relaxed sm:min-h-56"
               value={story}
               onChange={(e) => setStory(e.target.value)}
               placeholder={w.storyHint}
@@ -725,14 +725,14 @@ export function Wizard({ lang, dict, user, initial }: Props) {
               </p>
             )}
 
-            <div className="flex justify-between pt-2">
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
               <button
                 onClick={() => setStep(2)}
-                className="rounded-lg border border-slate-600 px-5 py-2.5 text-slate-200 hover:border-slate-400"
+                className="btn-outline w-full text-sm sm:w-auto"
               >
                 {c.back}
               </button>
-              <button onClick={nextFromStory} disabled={busy} className="btn-gold">
+              <button onClick={nextFromStory} disabled={busy} className="btn-gold w-full sm:w-auto">
                 {busy ? c.loading : c.next}
               </button>
             </div>
@@ -761,6 +761,9 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                 <input
                   className="input"
                   dir="ltr"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={contact.phone}
                   onChange={(e) =>
                     setContact({ ...contact, phone: e.target.value })
@@ -810,12 +813,12 @@ export function Wizard({ lang, dict, user, initial }: Props) {
             {/* Payment methods */}
             <div>
               <label className="label">{w.payment} *</label>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-2">
                 {methods.map((m) => (
                   <button
                     key={m}
                     onClick={() => setPayMethod(m)}
-                    className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                    className={`rounded-xl border px-2 py-3 text-center text-xs font-semibold sm:px-4 sm:text-sm ${
                       payMethod === m
                         ? "border-gold bg-gold/10 text-gold"
                         : "border-slate-700 text-slate-300 hover:border-slate-500"
@@ -916,17 +919,17 @@ export function Wizard({ lang, dict, user, initial }: Props) {
               </span>
             </div>
 
-            <div className="flex justify-between pt-2">
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
               <button
                 onClick={() => setStep(3)}
-                className="rounded-lg border border-slate-600 px-5 py-2.5 text-slate-200 hover:border-slate-400"
+                className="btn-outline w-full text-sm sm:w-auto"
               >
                 {c.back}
               </button>
               <button
                 onClick={submitOrder}
                 disabled={busy}
-                className="btn-gold"
+                className="btn-gold w-full sm:w-auto"
               >
                 {busy ? w.placing : w.pay}
               </button>

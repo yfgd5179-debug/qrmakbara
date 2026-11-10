@@ -41,22 +41,27 @@ export default async function DashboardPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="text-3xl font-bold text-white">{t.title}</h1>
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
+      <h1 className="text-2xl font-bold text-white sm:text-3xl">{t.title}</h1>
       <p className="mt-1 text-slate-400">
         {t.hello.replace("{name}", user.name)}
       </p>
 
       <section className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white">{t.memorials}</h2>
-          <Link href={`/${lang}/create`} className="btn-gold !py-2 text-sm">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-white sm:text-xl">
+            {t.memorials}
+          </h2>
+          <Link
+            href={`/${lang}/create`}
+            className="btn-gold py-2! text-sm"
+          >
             {dict.landing.ctaCreate}
           </Link>
         </div>
 
         {memorials.length === 0 ? (
-          <div className="card mt-4 p-8 text-center">
+          <div className="card mt-4 p-6 text-center">
             <p className="text-slate-400">{t.empty}</p>
             <Link href={`/${lang}/create`} className="btn-gold mt-4 inline-block">
               {t.createFirst}
@@ -88,18 +93,18 @@ export default async function DashboardPage({
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 [&>*]:flex-1 sm:[&>*]:flex-none">
                     {m.status === "published" && (
                       <Link
                         href={`/${lang}/m/${m.slug}`}
-                        className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400"
+                        className="btn-outline text-sm"
                       >
                         {t.view}
                       </Link>
                     )}
                     <Link
                       href={`/${lang}/create?edit=${m.id}`}
-                      className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400"
+                      className="btn-outline text-sm"
                     >
                       {t.manage}
                     </Link>
@@ -143,41 +148,53 @@ export default async function DashboardPage({
         {orders.length === 0 ? (
           <p className="mt-3 text-slate-400">{t.noOrders}</p>
         ) : (
-          <div className="card mt-4 overflow-x-auto p-2">
+          <div className="card mt-4 overflow-x-auto p-1 sm:p-2">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-start text-slate-400">
-                  <th className="p-3 text-start">{dict.order.orderNo}</th>
-                  <th className="p-3 text-start">{dict.wizard.payment}</th>
-                  <th className="p-3 text-start">{dict.admin.amount}</th>
-                  <th className="p-3 text-start">{dict.order.status}</th>
-                  <th className="p-3 text-start">{t.createdAt}</th>
+                  <th className="p-2 text-start sm:p-3">{dict.order.orderNo}</th>
+                  {/* Payment and date only fit on a wider screen — the phone
+                      view keeps order number, amount and status. */}
+                  <th className="hidden p-2 text-start sm:table-cell sm:p-3">
+                    {dict.wizard.payment}
+                  </th>
+                  <th className="p-2 text-start sm:p-3">{dict.admin.amount}</th>
+                  <th className="p-2 text-start sm:p-3">{dict.order.status}</th>
+                  <th className="hidden p-2 text-start sm:table-cell sm:p-3">
+                    {t.createdAt}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.id} className="border-t border-slate-800">
-                    <td className="p-3 font-mono text-xs text-slate-300" dir="ltr">
+                    <td
+                      className="p-2 font-mono text-xs text-slate-300 sm:p-3"
+                      dir="ltr"
+                    >
                       {o.id}
                     </td>
-                    <td className="p-3 text-slate-300">
+                    <td className="hidden p-2 text-slate-300 sm:table-cell sm:p-3">
                       {o.payment_method === "cash"
                         ? dict.wizard.cash
                         : o.payment_method === "card"
                           ? dict.wizard.card
                           : dict.wizard.online}
                     </td>
-                    <td className="p-3 text-slate-300" dir="ltr">
+                    <td className="p-2 text-slate-300 sm:p-3" dir="ltr">
                       {formatPrice(o.amount, o.currency)}
                     </td>
-                    <td className="p-3">
+                    <td className="p-2 sm:p-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${orderStatusBadge(o.status)}`}
                       >
                         {orderStatusLabel(o.status, dict.admin)}
                       </span>
                     </td>
-                    <td className="p-3 text-slate-500" dir="ltr">
+                    <td
+                      className="hidden p-2 text-slate-500 sm:table-cell sm:p-3"
+                      dir="ltr"
+                    >
                       {o.created_at.slice(0, 10)}
                     </td>
                   </tr>

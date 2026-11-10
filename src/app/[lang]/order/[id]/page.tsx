@@ -35,22 +35,22 @@ export default async function OrderPage({
   const t = dict.order;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
-      <div className="card p-8 text-center">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
+      <div className="card p-5 text-center sm:p-8">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 text-2xl text-emerald-300">
           ✓
         </div>
-        <h1 className="mt-4 text-3xl font-bold text-white">{t.title}</h1>
+        <h1 className="mt-4 text-2xl font-bold text-white sm:text-3xl">{t.title}</h1>
         <p className="mt-2 text-slate-400">{t.successText}</p>
 
         <dl className="mx-auto mt-6 grid max-w-md gap-3 text-start text-sm">
-          <div className="flex justify-between rounded-lg bg-slate-900/70 px-4 py-3">
-            <dt className="text-slate-400">{t.orderNo}</dt>
-            <dd className="font-mono text-slate-200" dir="ltr">
+          <div className="flex items-baseline justify-between gap-3 rounded-lg bg-slate-900/70 px-4 py-3">
+            <dt className="shrink-0 text-slate-400">{t.orderNo}</dt>
+            <dd className="min-w-0 truncate text-end font-mono text-slate-200" dir="ltr">
               {order.id}
             </dd>
           </div>
-          <div className="flex justify-between rounded-lg bg-slate-900/70 px-4 py-3">
+          <div className="flex items-baseline justify-between gap-3 rounded-lg bg-slate-900/70 px-4 py-3">
             <dt className="text-slate-400">{t.payment}</dt>
             <dd className="text-slate-200">
               {order.payment_method === "cash"
@@ -60,13 +60,13 @@ export default async function OrderPage({
                   : dict.wizard.online}
             </dd>
           </div>
-          <div className="flex justify-between rounded-lg bg-slate-900/70 px-4 py-3">
+          <div className="flex items-baseline justify-between gap-3 rounded-lg bg-slate-900/70 px-4 py-3">
             <dt className="text-slate-400">{t.status}</dt>
             <dd className="text-slate-200">
               {orderStatusLabel(order.status, dict.admin)}
             </dd>
           </div>
-          <div className="flex justify-between rounded-lg bg-slate-900/70 px-4 py-3">
+          <div className="flex items-baseline justify-between gap-3 rounded-lg bg-slate-900/70 px-4 py-3">
             <dt className="text-slate-400">{dict.wizard.total}</dt>
             <dd className="font-bold text-gold" dir="ltr">
               {formatPrice(order.amount, order.currency)}
@@ -105,7 +105,7 @@ export default async function OrderPage({
       <div className="mt-6 text-center">
         <Link
           href={`/${lang}/dashboard`}
-          className="rounded-lg border border-slate-600 px-5 py-2.5 text-slate-200 hover:border-slate-400"
+          className="btn-outline w-full text-sm sm:w-auto"
         >
           {dict.dashboard.title}
         </Link>

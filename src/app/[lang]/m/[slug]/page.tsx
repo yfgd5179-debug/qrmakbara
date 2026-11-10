@@ -72,13 +72,13 @@ export default async function MemorialPage({
       : "";
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12">
       <header className="text-center">
         <div
           aria-hidden
           className="mx-auto mb-6 h-px w-24 bg-gradient-to-r from-transparent via-gold to-transparent"
         />
-        <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+        <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
           {memorial.name}
         </h1>
         {lifespan && (
@@ -125,7 +125,7 @@ export default async function MemorialPage({
         </section>
       )}
 
-      <section className="mt-12">
+      <section className="mt-10 sm:mt-12">
         <h2 className="text-center text-2xl font-bold text-white">
           {t.storyTitle}
         </h2>
@@ -147,7 +147,7 @@ export default async function MemorialPage({
       </section>
 
       {photos.length > 0 && (
-        <section className="mt-12">
+        <section className="mt-10 sm:mt-12">
           <h2 className="text-center text-2xl font-bold text-white">
             {t.gallery}
           </h2>
@@ -164,7 +164,7 @@ export default async function MemorialPage({
       )}
 
       {videos.length > 0 && (
-        <section className="mt-12">
+        <section className="mt-10 sm:mt-12">
           <h2 className="text-center text-2xl font-bold text-white">
             {t.videos}
           </h2>
