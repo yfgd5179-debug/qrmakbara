@@ -1,6 +1,6 @@
 "use client";
 
-import { Analytics } from "@vercel/analytics/react";
+import { Analytics } from "@vercel/analytics/next";
 
 /**
  * Vercel Web Analytics for the whole app.
@@ -9,6 +9,11 @@ import { Analytics } from "@vercel/analytics/react";
  * functions cannot cross the server → client RSC boundary. The filter drops
  * page views of the admin panel so one operator's traffic never distorts the
  * "what do visitors do" reports. Custom funnel events are unaffected.
+ *
+ * Uses the `next` entry point (not `react`): it reads the App Router pathname
+ * and params and reports the *route* (`/m/[slug]`, `/order/[id]`), so the
+ * dashboard groups every memorial/order page into one row instead of listing
+ * each slug separately.
  */
 export function WebAnalytics() {
   return (
