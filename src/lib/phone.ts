@@ -62,6 +62,21 @@ export function phoneVariants(raw: string): string[] {
   return out;
 }
 
+/**
+ * Lookup order for account searches: the canonical form comes first, then
+ * every other spelling. All writings of one number ("07706425337",
+ * "+9647706425337", "009647706425337") therefore resolve to the same leading
+ * candidate — without this, a step that reads the canonical value (the reset
+ * cookie) and a step that reads raw user input could land on different rows
+ * if a duplicate ever slipped in.
+ */
+export function lookupVariants(raw: string): string[] {
+  const all = phoneVariants(raw);
+  const canonical = canonicalPhone(raw);
+  if (!canonical || !all.includes(canonical)) return all;
+  return [canonical, ...all.filter((value) => value !== canonical)];
+}
+
 /** A plausible E.164 number: 7–15 digits after normalization. */
 export function isValidPhone(raw: string): boolean {
   const digits = phoneDigits(canonicalPhone(raw));

@@ -21,7 +21,7 @@ import {
 import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { supabase, newId, parseList } from "./db";
 import { hasLocale } from "./dict";
-import { canonicalPhone, isValidPhone, phoneDigits, phoneVariants } from "./phone";
+import { canonicalPhone, isValidPhone, lookupVariants, phoneDigits } from "./phone";
 import { hit, clientIp } from "./ratelimit";
 import {
   RESET_OK_COOKIE,
@@ -63,13 +63,16 @@ async function getMemorial(
 /**
  * Finds a user by phone number, however it was typed. Every candidate is a
  * parameterised `.eq()` lookup (supabase-js URL-encodes the value), so user
- * input never reaches a PostgREST filter string.
+ * input never reaches a PostgREST filter string. Candidates run canonical-
+ * first (see `lookupVariants`) so every spelling of a number reaches the
+ * same row — registration refuses a second account for an existing number,
+ * and the reset flow's write/read steps can never disagree.
  */
 async function findUserByPhone(
   raw: string
 ): Promise<Record<string, unknown> | null> {
   const results = await Promise.all(
-    phoneVariants(raw).map((variant) =>
+    lookupVariants(raw).map((variant) =>
       supabase
         .from("users")
         .select("*")
