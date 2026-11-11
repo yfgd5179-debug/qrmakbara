@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { MetalPlaque } from "@/components/MetalPlaque";
+import { startPaymentAction } from "@/lib/actions";
 import { getSession } from "@/lib/auth";
 import { formatPrice, orderStatusLabel } from "@/lib/commerce";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase } from "@/lib/db";
 import type { Memorial, Order } from "@/lib/types";
+import { zaincashConfigured } from "@/lib/zaincash";
 
 export default async function OrderPage({
   params,
@@ -73,6 +75,26 @@ export default async function OrderPage({
             </dd>
           </div>
         </dl>
+
+        {/* Online orders land here still pending — offer the gateway again
+            until the payment is confirmed (or arrange it manually for the
+            currencies ZainCash does not carry). */}
+        {order.status === "pending" && order.payment_method === "online" && (
+          <div className="mx-auto mt-4 max-w-md rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-start text-sm text-slate-300">
+            {order.currency === "IQD" && zaincashConfigured() ? (
+              <>
+                <p>{t.payPendingNote}</p>
+                <form action={startPaymentAction.bind(null, order.id, lang)}>
+                  <button type="submit" className="btn-gold mt-3 w-full">
+                    {t.payNow}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <p>{t.payContactNote}</p>
+            )}
+          </div>
+        )}
 
         <Link
           href={`/${lang}/m/${memorial.slug}`}

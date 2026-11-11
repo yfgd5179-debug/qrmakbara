@@ -54,6 +54,8 @@ export type Order = {
   currency: string;
   status: "pending" | "paid" | "shipped" | "delivered" | "cancelled";
   created_at: string;
+  /** ZainCash transaction id for online payments (null otherwise). */
+  payment_ref?: string | null;
 };
 
 export type StoryResult = { story: string; provider: string };

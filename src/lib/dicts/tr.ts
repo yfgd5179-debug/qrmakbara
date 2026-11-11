@@ -186,7 +186,10 @@ export const tr: Dict = {
     card: "Kredi kartı",
     online: "Online ödeme",
     cashNote: "Plaka adresinize ulaştığında nakit ödeyin.",
-    onlineNote: "Kredi kartınızla güvenle online ödeyin.",
+    onlineNote:
+      "ZainCash ile güvenle ödeyin — resmi ödeme sayfasına yönlendirilir, işlem tamamlanınca buraya dönersiniz.",
+    onlineNoteIntl:
+      "Irak dışı teslimat: sipariş gönderildikten sonra ödeme yöntemi için sizinle iletişime geçeriz.",
     cardNumber: "Kart numarası",
     cardHolder: "Kart sahibinin adı",
     expiry: "Son kullanma (AA/YY)",
@@ -220,6 +223,9 @@ export const tr: Dict = {
     qrError: "QR kodu oluşturulamadı. Sayfayı yenileyip tekrar deneyin.",
     status: "Durum",
     payment: "Ödeme",
+    payNow: "ZainCash ile şimdi öde",
+    payPendingNote: "Ödeme henüz tamamlanmadı — levhanızı almak için ödemeyi tamamlayın.",
+    payContactNote: "Ödeme ve teslimat için sizinle iletişime geçeceğiz.",
   },
   dashboard: {
     title: "Panelim",

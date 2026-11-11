@@ -119,12 +119,6 @@ export function Wizard({ lang, dict, user, initial }: Props) {
   const [payMethod, setPayMethod] = useState<PaymentMethod>(
     paymentMethods(user.country || "IQ")[0]
   );
-  const [card, setCard] = useState({
-    card_number: "",
-    card_holder: "",
-    card_expiry: "",
-    card_cvv: "",
-  });
 
   const methods = paymentMethods(contact.country);
   const price = priceFor(contact.country);
@@ -334,9 +328,15 @@ export function Wizard({ lang, dict, user, initial }: Props) {
         memorial_id: id,
         ...contact,
         payment_method: payMethod,
-        ...card,
+        lang,
       });
       if ("error" in res) return fail(res.error);
+      if (res.payUrl) {
+        // Online orders continue to ZainCash's hosted payment page — a
+        // full-page navigation, because the gateway is cross-origin.
+        window.location.assign(res.payUrl);
+        return;
+      }
       router.push(`/${lang}/order/${res.orderId}`);
     } finally {
       setBusy(false);
@@ -821,7 +821,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
             {/* Payment methods */}
             <div>
               <label className="label">{w.payment} *</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {methods.map((m) => (
                   <button
                     key={m}
@@ -837,66 +837,13 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                 ))}
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                {payMethod === "cash" ? w.cashNote : w.onlineNote}
+                {payMethod === "cash"
+                  ? w.cashNote
+                  : contact.country === "IQ"
+                    ? w.onlineNote
+                    : w.onlineNoteIntl}
               </p>
             </div>
-
-            {payMethod !== "cash" && (
-              <div className="grid gap-4 rounded-xl border border-slate-700 p-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="label">{w.cardNumber}</label>
-                  <input
-                    className="input"
-                    dir="ltr"
-                    inputMode="numeric"
-                    placeholder="4242 4242 4242 4242"
-                    value={card.card_number}
-                    onChange={(e) =>
-                      setCard({ ...card, card_number: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="label">{w.cardHolder}</label>
-                  <input
-                    className="input"
-                    dir="ltr"
-                    value={card.card_holder}
-                    onChange={(e) =>
-                      setCard({ ...card, card_holder: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="label">{w.expiry}</label>
-                  <input
-                    className="input"
-                    dir="ltr"
-                    placeholder="12/28"
-                    value={card.card_expiry}
-                    onChange={(e) =>
-                      setCard({ ...card, card_expiry: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="label">{w.cvv}</label>
-                  <input
-                    className="input"
-                    dir="ltr"
-                    inputMode="numeric"
-                    placeholder="123"
-                    value={card.card_cvv}
-                    onChange={(e) =>
-                      setCard({ ...card, card_cvv: e.target.value })
-                    }
-                  />
-                </div>
-                <p className="text-xs text-slate-500 sm:col-span-2">
-                  {w.cardDemo}
-                </p>
-              </div>
-            )}
 
             {/* The physical plaque the order produces — same artwork as the
                 prints, so buyers see exactly what gets engraved. */}

@@ -2,7 +2,7 @@
 
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { generateStory } from "./ai";
 import {
@@ -32,6 +32,7 @@ import {
 } from "./reset";
 import { s3CanonicalUrl, s3Configured, s3Delete, s3Exists, s3KeyFromUrl, s3SignedUrl } from "./s3";
 import { resetCodeMessage, sendSms } from "./sms";
+import { zaincashConfigured, zaincashInit } from "./zaincash";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
 
 export type FormState = { error?: string; ok?: boolean } | null;
@@ -684,15 +685,60 @@ export type CheckoutInput = {
   city: string;
   country: string;
   payment_method: PaymentMethod;
-  card_number?: string;
-  card_holder?: string;
-  card_expiry?: string;
-  card_cvv?: string;
+  /** Page locale — used for the gateway's return URL (validated with hasLocale). */
+  lang: string;
 };
+
+/**
+ * Builds this deployment's absolute origin (e.g. https://site.vercel.app)
+ * from the forwarded request headers — the gateway needs absolute return URLs.
+ */
+async function requestOrigin(): Promise<string | null> {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") || "https";
+  const host = h.get("x-forwarded-host") || h.get("host");
+  return host ? `${proto}://${host}` : null;
+}
+
+/**
+ * Opens a ZainCash transaction for a pending online order and returns the
+ * hosted payment page URL. Stores the gateway transaction id on the order so
+ * the return route/webhook can reconcile it later. Returns null when the
+ * gateway is not configured or fails — the order simply stays pending and
+ * the customer can retry from the order page.
+ */
+async function startZaincashPayment(
+  orderId: string,
+  amount: number,
+  langRaw: string,
+  phone: string
+): Promise<string | null> {
+  if (!zaincashConfigured()) return null;
+  const lang: Locale = hasLocale(langRaw) ? langRaw : "ar";
+  const origin = await requestOrigin();
+  if (!origin) return null;
+  const returnUrl = `${origin}/api/payments/zaincash/return/${lang}/${orderId}`;
+  const init = await zaincashInit({
+    orderId,
+    amount,
+    lang,
+    phone,
+    successUrl: returnUrl,
+    failureUrl: returnUrl,
+  });
+  if (!init) return null;
+  await supabase
+    .from("orders")
+    .update({ payment_ref: init.transactionId })
+    .eq("id", orderId)
+    .eq("status", "pending");
+  await trackEvent("payment_start", { method: "online" });
+  return init.redirectUrl;
+}
 
 export async function placeOrderAction(
   input: CheckoutInput
-): Promise<{ orderId: string; slug: string } | { error: string }> {
+): Promise<{ orderId: string; slug: string; payUrl?: string } | { error: string }> {
   // Outcome half of the checkout funnel (the submit half is tracked in the
   // wizard). Never includes contact details — only the outcome code.
   async function fail(error: string): Promise<{ error: string }> {
@@ -712,14 +758,6 @@ export async function placeOrderAction(
   const allowed = paymentMethods(input.country);
   if (!allowed.includes(input.payment_method)) return fail("method");
 
-  if (input.payment_method !== "cash") {
-    const digits = (input.card_number ?? "").replace(/\s+/g, "");
-    if (!/^\d{13,19}$/.test(digits)) return fail("card");
-    if (!input.card_holder?.trim()) return fail("card");
-    if (!/^\d{2}\/\d{2}$/.test(input.card_expiry ?? "")) return fail("card");
-    if (!/^\d{3,4}$/.test(input.card_cvv ?? "")) return fail("card");
-  }
-
   const { amount, currency } = priceFor(input.country);
   const id = newId();
   const { error } = await supabase.from("orders").insert({
@@ -734,7 +772,9 @@ export async function placeOrderAction(
     payment_method: input.payment_method,
     amount,
     currency,
-    status: input.payment_method === "cash" ? "pending" : "paid",
+    // Nothing is "paid" at insertion time. Cash orders are settled on
+    // delivery; online orders only become paid when the gateway confirms.
+    status: "pending",
     created_at: new Date().toISOString(),
   });
   // Never report an order id the database refused to store.
@@ -748,7 +788,59 @@ export async function placeOrderAction(
   // The dashboard route is "/[lang]/dashboard" — a literal "/dashboard" path
   // matches nothing and would silently skip the revalidation.
   revalidatePath("/[lang]/dashboard", "page");
+
+  // IQD online orders continue straight to ZainCash's payment page.
+  if (input.payment_method === "online" && currency === "IQD") {
+    const payUrl = await startZaincashPayment(
+      id,
+      amount,
+      input.lang,
+      input.phone
+    );
+    if (payUrl) return { orderId: id, slug: memorial.slug, payUrl };
+  }
+  // USD (outside Iraq) has no gateway yet — the order stays pending and the
+  // customer is contacted to arrange payment.
   return { orderId: id, slug: memorial.slug };
+}
+
+/**
+ * "Pay now" on the order page: opens a fresh ZainCash transaction for a
+ * pending online order and redirects the customer to the payment page.
+ */
+export async function startPaymentAction(
+  orderId: string,
+  langRaw: string
+): Promise<void> {
+  const lang: Locale = hasLocale(langRaw) ? langRaw : "ar";
+  const user = await getSession();
+  if (!user) redirect(`/${lang}/login`);
+
+  const { data } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+  const order = data as Order | null;
+  if (!order || order.user_id !== user.id) redirect(`/${lang}/dashboard`);
+
+  if (
+    order.status !== "pending" ||
+    order.payment_method !== "online" ||
+    order.currency !== "IQD"
+  ) {
+    redirect(`/${lang}/order/${orderId}`);
+  }
+  // Caps gateway sessions per customer (each init costs an API round trip).
+  if (hit(`pay:${user.id}`, 10)) redirect(`/${lang}/order/${orderId}`);
+
+  const payUrl = await startZaincashPayment(
+    order.id,
+    order.amount,
+    lang,
+    order.phone
+  );
+  redirect(payUrl ?? `/${lang}/order/${orderId}`);
 }
 
 const ORDER_STATUSES = ["pending", "paid", "shipped", "delivered", "cancelled"];

@@ -64,8 +64,14 @@ create table if not exists orders (
   amount double precision not null,
   currency text not null,
   status text not null default 'pending',
-  created_at timestamptz not null
+  created_at timestamptz not null,
+  -- ZainCash: gateway transaction id of the online payment, used to
+  -- reconcile the return URL / webhook against the inquiry API.
+  payment_ref text
 );
+
+-- Existing databases: add the ZainCash column (idempotent).
+alter table orders add column if not exists payment_ref text;
 
 -- Storage bucket for uploads (run once). The app also tries to create it.
 -- 100 MB file limit matches MAX_UPLOAD in src/lib/actions.ts.

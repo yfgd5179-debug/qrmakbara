@@ -48,11 +48,12 @@ export function priceFor(country: string): { amount: number; currency: string } 
 }
 
 /**
- * Iraq: cash on delivery OR card.
- * Outside Iraq: online payment only.
+ * Iraq: cash on delivery, or online payment through the ZainCash gateway
+ * (IQD). Outside Iraq: online payment flow — handled manually for now
+ * (the gateway only supports Iraqi dinar), so the order stays pending.
  */
 export function paymentMethods(country: string): PaymentMethod[] {
-  return country === "IQ" ? ["cash", "card"] : ["online"];
+  return country === "IQ" ? ["cash", "online"] : ["online"];
 }
 
 export function formatPrice(amount: number, currency: string): string {
