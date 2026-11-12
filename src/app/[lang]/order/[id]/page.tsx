@@ -7,6 +7,7 @@ import { formatPrice, orderStatusLabel } from "@/lib/commerce";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase } from "@/lib/db";
 import type { Memorial, Order } from "@/lib/types";
+import { qiConfigured } from "@/lib/qicard";
 import { zaincashConfigured } from "@/lib/zaincash";
 
 export default async function OrderPage({
@@ -35,6 +36,13 @@ export default async function OrderPage({
   if (!memorial) notFound();
 
   const t = dict.order;
+
+  // Which gateway (if any) can take this pending order's money right now.
+  const gatewayReady =
+    order.payment_method === "card" ? qiConfigured() : zaincashConfigured();
+  const awaitingGateway =
+    order.status === "pending" &&
+    (order.payment_method === "online" || order.payment_method === "card");
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
@@ -76,17 +84,17 @@ export default async function OrderPage({
           </div>
         </dl>
 
-        {/* Online orders land here still pending — offer the gateway again
-            until the payment is confirmed (or arrange it manually for the
-            currencies ZainCash does not carry). */}
-        {order.status === "pending" && order.payment_method === "online" && (
+        {/* Online/card orders land here still pending — offer the gateway
+            again until the payment is confirmed (or arrange it manually for
+            the currencies the gateways do not carry). */}
+        {awaitingGateway && (
           <div className="mx-auto mt-4 max-w-md rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-start text-sm text-slate-300">
-            {order.currency === "IQD" && zaincashConfigured() ? (
+            {gatewayReady ? (
               <>
                 <p>{t.payPendingNote}</p>
                 <form action={startPaymentAction.bind(null, order.id, lang)}>
                   <button type="submit" className="btn-gold mt-3 w-full">
-                    {t.payNow}
+                    {order.payment_method === "card" ? t.payNowCard : t.payNow}
                   </button>
                 </form>
               </>

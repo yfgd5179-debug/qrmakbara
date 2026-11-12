@@ -54,7 +54,7 @@ export type Order = {
   currency: string;
   status: "pending" | "paid" | "shipped" | "delivered" | "cancelled";
   created_at: string;
-  /** ZainCash transaction id for online payments (null otherwise). */
+  /** Gateway payment reference for online payments — ZainCash transaction id or Qi Card paymentId (null otherwise). */
   payment_ref?: string | null;
 };
 

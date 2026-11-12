@@ -181,11 +181,13 @@ export const en = {
     phone: "Phone number",
     payment: "Payment method",
     cash: "Cash on delivery",
-    card: "Credit card",
+    card: "Qi Card",
     online: "Online payment",
     cashNote: "Pay in cash when the plaque is delivered to your address.",
     onlineNote:
       "Pay securely through ZainCash — you are taken to the official payment page and returned here once the payment completes.",
+    cardNote:
+      "Pay securely with your Qi Card — you are taken to the official Qi payment page (3D Secure) and returned here once the payment completes.",
     onlineNoteIntl:
       "Delivery outside Iraq: after the order is placed we contact you to arrange payment.",
     cardNumber: "Card number",
@@ -223,6 +225,7 @@ export const en = {
     status: "Status",
     payment: "Payment",
     payNow: "Pay now with ZainCash",
+    payNowCard: "Pay now with Qi Card",
     payPendingNote: "Payment not completed yet — finish payment to receive your plaque.",
     payContactNote: "We will contact you to arrange payment and delivery.",
   },

@@ -65,12 +65,13 @@ create table if not exists orders (
   currency text not null,
   status text not null default 'pending',
   created_at timestamptz not null,
-  -- ZainCash: gateway transaction id of the online payment, used to
-  -- reconcile the return URL / webhook against the inquiry API.
+  -- Gateway payment reference of the online payment (ZainCash transaction id
+  -- or Qi Card paymentId), used to reconcile the return URL / webhook
+  -- against the gateway's own status API.
   payment_ref text
 );
 
--- Existing databases: add the ZainCash column (idempotent).
+-- Existing databases: add the gateway reference column (idempotent).
 alter table orders add column if not exists payment_ref text;
 
 -- Storage bucket for uploads (run once). The app also tries to create it.

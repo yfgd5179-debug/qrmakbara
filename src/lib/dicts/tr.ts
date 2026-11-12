@@ -183,11 +183,13 @@ export const tr: Dict = {
     phone: "Telefon numarası",
     payment: "Ödeme yöntemi",
     cash: "Kapıda nakit ödeme",
-    card: "Kredi kartı",
+    card: "Qi Card",
     online: "Online ödeme",
     cashNote: "Plaka adresinize ulaştığında nakit ödeyin.",
     onlineNote:
       "ZainCash ile güvenle ödeyin — resmi ödeme sayfasına yönlendirilir, işlem tamamlanınca buraya dönersiniz.",
+    cardNote:
+      "Qi Card ile güvenle ödeyin — resmi Qi ödeme sayfasına (3D Secure) yönlendirilir, işlem tamamlanınca buraya dönersiniz.",
     onlineNoteIntl:
       "Irak dışı teslimat: sipariş gönderildikten sonra ödeme yöntemi için sizinle iletişime geçeriz.",
     cardNumber: "Kart numarası",
@@ -224,6 +226,7 @@ export const tr: Dict = {
     status: "Durum",
     payment: "Ödeme",
     payNow: "ZainCash ile şimdi öde",
+    payNowCard: "Qi Card ile şimdi öde",
     payPendingNote: "Ödeme henüz tamamlanmadı — levhanızı almak için ödemeyi tamamlayın.",
     payContactNote: "Ödeme ve teslimat için sizinle iletişime geçeceğiz.",
   },

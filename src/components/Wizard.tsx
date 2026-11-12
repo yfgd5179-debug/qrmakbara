@@ -332,8 +332,9 @@ export function Wizard({ lang, dict, user, initial }: Props) {
       });
       if ("error" in res) return fail(res.error);
       if (res.payUrl) {
-        // Online orders continue to ZainCash's hosted payment page — a
-        // full-page navigation, because the gateway is cross-origin.
+        // Online/card orders continue to the gateway's hosted payment page
+        // (ZainCash or Qi Card) — a full-page navigation, because the
+        // gateway is cross-origin.
         window.location.assign(res.payUrl);
         return;
       }
@@ -839,9 +840,11 @@ export function Wizard({ lang, dict, user, initial }: Props) {
               <p className="mt-2 text-xs text-slate-500">
                 {payMethod === "cash"
                   ? w.cashNote
-                  : contact.country === "IQ"
-                    ? w.onlineNote
-                    : w.onlineNoteIntl}
+                  : payMethod === "card"
+                    ? w.cardNote
+                    : contact.country === "IQ"
+                      ? w.onlineNote
+                      : w.onlineNoteIntl}
               </p>
             </div>
 

@@ -31,6 +31,7 @@ import {
   resetOkToken,
 } from "./reset";
 import { s3CanonicalUrl, s3Configured, s3Delete, s3Exists, s3KeyFromUrl, s3SignedUrl } from "./s3";
+import { qiCreatePayment } from "./qicard";
 import { resetCodeMessage, sendSms } from "./sms";
 import { zaincashConfigured, zaincashInit } from "./zaincash";
 import type { Locale, Memorial, Order, StoryResult } from "./types";
@@ -736,6 +737,71 @@ async function startZaincashPayment(
   return init.redirectUrl;
 }
 
+/**
+ * Opens a Qi Card payment for a pending card order and returns the hosted
+ * 3D Secure payment page URL. Stores the gateway payment id on the order so
+ * the return route/webhook can reconcile it later. Returns null when the
+ * gateway is not configured or fails — the order simply stays pending.
+ */
+async function startQiCardPayment(
+  orderId: string,
+  amount: number,
+  langRaw: string,
+  phone: string,
+  contactName: string
+): Promise<string | null> {
+  const lang: Locale = hasLocale(langRaw) ? langRaw : "ar";
+  const origin = await requestOrigin();
+  if (!origin) return null;
+  const init = await qiCreatePayment({
+    orderId,
+    amount,
+    lang,
+    phone,
+    contactName,
+    finishPaymentUrl: `${origin}/api/payments/qicard/return/${lang}/${orderId}`,
+    notificationUrl: `${origin}/api/payments/qicard/webhook`,
+  });
+  if (!init) return null;
+  await supabase
+    .from("orders")
+    .update({ payment_ref: init.paymentId })
+    .eq("id", orderId)
+    .eq("status", "pending");
+  await trackEvent("payment_start", { method: "card" });
+  return init.formUrl;
+}
+
+/**
+ * Picks the gateway that owns this payment method — ZainCash for `online`
+ * orders, Qi Card for `card` orders — and opens its hosted payment page.
+ * Returns null when the method needs no gateway or the gateway is down.
+ */
+async function startGatewayPayment(
+  order: {
+    id: string;
+    amount: number;
+    payment_method: PaymentMethod;
+    phone: string;
+    contact_name: string;
+  },
+  langRaw: string
+): Promise<string | null> {
+  if (order.payment_method === "online") {
+    return startZaincashPayment(order.id, order.amount, langRaw, order.phone);
+  }
+  if (order.payment_method === "card") {
+    return startQiCardPayment(
+      order.id,
+      order.amount,
+      langRaw,
+      order.phone,
+      order.contact_name
+    );
+  }
+  return null;
+}
+
 export async function placeOrderAction(
   input: CheckoutInput
 ): Promise<{ orderId: string; slug: string; payUrl?: string } | { error: string }> {
@@ -789,13 +855,18 @@ export async function placeOrderAction(
   // matches nothing and would silently skip the revalidation.
   revalidatePath("/[lang]/dashboard", "page");
 
-  // IQD online orders continue straight to ZainCash's payment page.
-  if (input.payment_method === "online" && currency === "IQD") {
-    const payUrl = await startZaincashPayment(
-      id,
-      amount,
-      input.lang,
-      input.phone
+  // IQD online orders continue straight to the gateway's payment page —
+  // ZainCash for "online", Qi Card for "card".
+  if (currency === "IQD" && input.payment_method !== "cash") {
+    const payUrl = await startGatewayPayment(
+      {
+        id,
+        amount,
+        payment_method: input.payment_method,
+        phone: input.phone.trim(),
+        contact_name: input.contact_name.trim(),
+      },
+      input.lang
     );
     if (payUrl) return { orderId: id, slug: memorial.slug, payUrl };
   }
@@ -805,8 +876,9 @@ export async function placeOrderAction(
 }
 
 /**
- * "Pay now" on the order page: opens a fresh ZainCash transaction for a
- * pending online order and redirects the customer to the payment page.
+ * "Pay now" on the order page: opens a fresh gateway session (ZainCash for
+ * online orders, Qi Card for card orders) for a pending IQD order and
+ * redirects the customer to the payment page.
  */
 export async function startPaymentAction(
   orderId: string,
@@ -826,7 +898,7 @@ export async function startPaymentAction(
 
   if (
     order.status !== "pending" ||
-    order.payment_method !== "online" ||
+    (order.payment_method !== "online" && order.payment_method !== "card") ||
     order.currency !== "IQD"
   ) {
     redirect(`/${lang}/order/${orderId}`);
@@ -834,12 +906,7 @@ export async function startPaymentAction(
   // Caps gateway sessions per customer (each init costs an API round trip).
   if (hit(`pay:${user.id}`, 10)) redirect(`/${lang}/order/${orderId}`);
 
-  const payUrl = await startZaincashPayment(
-    order.id,
-    order.amount,
-    lang,
-    order.phone
-  );
+  const payUrl = await startGatewayPayment(order, lang);
   redirect(payUrl ?? `/${lang}/order/${orderId}`);
 }
 
