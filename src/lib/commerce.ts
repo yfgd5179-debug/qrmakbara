@@ -48,12 +48,25 @@ export function priceFor(country: string): { amount: number; currency: string } 
 }
 
 /**
- * Iraq: cash on delivery, online payment through the ZainCash gateway, or a
- * Qi Card payment (both IQD). Outside Iraq: online payment flow — handled
- * manually for now (the gateways only support Iraqi dinar), so the order
- * stays pending.
+ * Master switch for gateway payments (ZainCash + Qi Card).
+ *
+ * Flipped to `false` while the live gateway credentials are being
+ * onboarded: checkout then offers cash on delivery only, and the pending
+ * order page stops showing the "Pay now" buttons. Everything downstream —
+ * `src/lib/zaincash.ts`, `src/lib/qicard.ts`, the return/webhook routes,
+ * the env variables — stays in place, so flipping this back to `true`
+ * re-enables online payment with no other change.
+ */
+export const ONLINE_PAYMENTS_ENABLED = false;
+
+/**
+ * Iraq: cash on delivery; when ONLINE_PAYMENTS_ENABLED, additionally online
+ * payment through the ZainCash gateway and a Qi Card payment (both IQD).
+ * Outside Iraq: cash as well, with the gateways (IQD only) available behind
+ * the same switch.
  */
 export function paymentMethods(country: string): PaymentMethod[] {
+  if (!ONLINE_PAYMENTS_ENABLED) return ["cash"];
   return country === "IQ" ? ["cash", "online", "card"] : ["online"];
 }
 

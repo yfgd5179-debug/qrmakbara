@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { MetalPlaque } from "@/components/MetalPlaque";
 import { startPaymentAction } from "@/lib/actions";
 import { getSession } from "@/lib/auth";
-import { formatPrice, orderStatusLabel } from "@/lib/commerce";
+import { formatPrice, ONLINE_PAYMENTS_ENABLED, orderStatusLabel } from "@/lib/commerce";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase } from "@/lib/db";
 import type { Memorial, Order } from "@/lib/types";
@@ -37,9 +37,12 @@ export default async function OrderPage({
 
   const t = dict.order;
 
-  // Which gateway (if any) can take this pending order's money right now.
+  // Which gateway (if any) can take this pending order's money right now —
+  // nothing while ONLINE_PAYMENTS_ENABLED is off, even for orders that were
+  // placed before the switch (they simply wait for manual contact).
   const gatewayReady =
-    order.payment_method === "card" ? qiConfigured() : zaincashConfigured();
+    ONLINE_PAYMENTS_ENABLED &&
+    (order.payment_method === "card" ? qiConfigured() : zaincashConfigured());
   const awaitingGateway =
     order.status === "pending" &&
     (order.payment_method === "online" || order.payment_method === "card");

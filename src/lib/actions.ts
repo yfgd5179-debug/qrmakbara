@@ -18,7 +18,7 @@ import {
   hashPassword,
   verifyPassword,
 } from "./auth";
-import { paymentMethods, priceFor, type PaymentMethod } from "./commerce";
+import { ONLINE_PAYMENTS_ENABLED, paymentMethods, priceFor, type PaymentMethod } from "./commerce";
 import { trackEvent } from "./analytics.server";
 import { supabase, newId, parseList } from "./db";
 import { hasLocale } from "./dict";
@@ -856,8 +856,9 @@ export async function placeOrderAction(
   revalidatePath("/[lang]/dashboard", "page");
 
   // IQD online orders continue straight to the gateway's payment page —
-  // ZainCash for "online", Qi Card for "card".
-  if (currency === "IQD" && input.payment_method !== "cash") {
+  // ZainCash for "online", Qi Card for "card". Skipped entirely while
+  // ONLINE_PAYMENTS_ENABLED is off (checkout only offers cash then anyway).
+  if (ONLINE_PAYMENTS_ENABLED && currency === "IQD" && input.payment_method !== "cash") {
     const payUrl = await startGatewayPayment(
       {
         id,
@@ -897,6 +898,7 @@ export async function startPaymentAction(
   if (!order || order.user_id !== user.id) redirect(`/${lang}/dashboard`);
 
   if (
+    !ONLINE_PAYMENTS_ENABLED ||
     order.status !== "pending" ||
     (order.payment_method !== "online" && order.payment_method !== "card") ||
     order.currency !== "IQD"
