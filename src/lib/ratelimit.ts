@@ -1,20 +1,23 @@
 import { headers } from "next/headers";
+import { supabase } from "./db";
 
 /**
- * Minimal in-memory sliding-window rate limiter.
+ * Sliding-window rate limiter.
  *
- * Per-instance (resets on cold start and is not shared across serverless
- * instances) — enough to blunt brute-force and abuse, but not a substitute
- * for an edge/WAF rule on very high traffic.
+ * The window lives in Postgres (`rate_limit_hit`, see supabase/schema.sql)
+ * so limits survive cold starts and are shared across serverless instances.
+ * When the function is unavailable (migration not yet run, Supabase
+ * unreachable) the limiter silently falls back to a per-instance in-memory
+ * window — weaker, but still enough to blunt brute-force attempts.
  */
 
 const DEFAULT_WINDOW_MS = 10 * 60 * 1000;
 const MAX_BUCKETS = 5000;
 
+/** Per-instance fallback; mirrors the Postgres function's semantics. */
 const buckets = new Map<string, number[]>();
 
-/** Records a hit for `key`. Returns true when the caller is over `max`. */
-export function hit(key: string, max: number, windowMs = DEFAULT_WINDOW_MS): boolean {
+function memoryHit(key: string, max: number, windowMs: number): boolean {
   const now = Date.now();
   const hits = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
   if (hits.length >= max) {
@@ -29,6 +32,31 @@ export function hit(key: string, max: number, windowMs = DEFAULT_WINDOW_MS): boo
     }
   }
   return false;
+}
+
+/**
+ * Records a hit for `key`. Returns true when the caller is over `max`.
+ *
+ * Async because the authoritative window is a Postgres RPC; every call
+ * site awaits it. Any RPC failure degrades to the in-memory window instead
+ * of letting rate limiting take the auth flow down with it.
+ */
+export async function hit(
+  key: string,
+  max: number,
+  windowMs = DEFAULT_WINDOW_MS
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc("rate_limit_hit", {
+      p_key: key,
+      p_max: max,
+      p_window_ms: windowMs,
+    });
+    if (error) throw error;
+    return Boolean(data);
+  } catch {
+    return memoryHit(key, max, windowMs);
+  }
 }
 
 /** Best-effort client IP for per-IP limiting (behind Vercel/proxies). */

@@ -248,6 +248,13 @@ export const tr: Dict = {
     continue: "Devam et",
     preview: "Önizle",
   },
+  account: {
+    title: "Hesabı sil",
+    body: "Hesabınızı, anı sayfalarınızı, siparişlerinizi, fotoğraflarınızı ve videolarınızı kalıcı olarak siler. Bu işlem geri alınamaz.",
+    passwordLabel: "Onaylamak için şifrenizi girin",
+    submit: "Hesabımı sil",
+    wrongPassword: "Şifre yanlış.",
+  },
   memorial: {
     notFound: "Bu anı sayfası mevcut değil.",
     born: "Doğum",

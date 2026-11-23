@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { DeleteAccountForm } from "@/components/DeleteAccountForm";
 import { MetalPlaque } from "@/components/MetalPlaque";
 import { logoutAction } from "@/lib/actions";
 import { getSession } from "@/lib/auth";
@@ -203,6 +204,17 @@ export default async function DashboardPage({
             </table>
           </div>
         )}
+      </section>
+
+      {/* Danger zone — permanent account deletion (GDPR). */}
+      <section className="mt-10">
+        <div className="card border-red-500/30 p-5">
+          <h2 className="text-lg font-bold text-red-300">
+            {dict.account.title}
+          </h2>
+          <p className="mt-2 text-sm text-slate-400">{dict.account.body}</p>
+          <DeleteAccountForm dict={dict} lang={lang} />
+        </div>
       </section>
 
       <form action={logoutAction} className="mt-10">

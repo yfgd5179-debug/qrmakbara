@@ -247,6 +247,13 @@ export const en = {
     continue: "Continue",
     preview: "Preview",
   },
+  account: {
+    title: "Delete account",
+    body: "Permanently deletes your account, memorial pages, orders, photos and videos. This cannot be undone.",
+    passwordLabel: "Enter your password to confirm",
+    submit: "Delete my account",
+    wrongPassword: "Incorrect password.",
+  },
   memorial: {
     notFound: "This memorial page does not exist.",
     born: "Born",

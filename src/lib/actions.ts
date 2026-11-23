@@ -140,7 +140,7 @@ export async function registerAction(
   if (!name) return fail("name");
 
   // Cap sign-ups per IP to slow bulk account creation.
-  if (hit(`register:ip:${await clientIp()}`, 10)) return fail("rate");
+  if (await hit(`register:ip:${await clientIp()}`, 10)) return fail("rate");
 
   // The phone number is the account identifier — it must be unique.
   if (await findUserByPhone(phone)) return fail("exists");
@@ -182,8 +182,8 @@ export async function loginAction(
   // asked here — verification only happens when a password is reset.
   const ip = await clientIp();
   if (
-    hit(`login:phone:${canonicalPhone(phone) || phone.toLowerCase()}`, 10) ||
-    hit(`login:ip:${ip}`, 30)
+    (await hit(`login:phone:${canonicalPhone(phone) || phone.toLowerCase()}`, 10)) ||
+    (await hit(`login:ip:${ip}`, 30))
   ) {
     return fail("rate");
   }
@@ -203,25 +203,74 @@ export async function logoutAction(): Promise<void> {
 }
 
 /**
- * In-memory rate limiter. Per-instance (resets on cold start / across
- * serverless instances), but enough to blunt brute-force attempts.
+ * Permanent account deletion (GDPR).
+ *
+ * Every child table references `users` with `on delete cascade`
+ * (supabase/schema.sql), so deleting the user row removes sessions,
+ * memorials and orders in one statement. Stored media is collected before
+ * the cascade and cleaned up best-effort afterwards — a failed object
+ * delete can never leave a public page pointing at removed rows, only an
+ * orphaned object in a private bucket.
+ */
+export async function deleteAccountAction(
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const password = String(formData.get("password") ?? "");
+  const lang = String(formData.get("lang") ?? "ar");
+  const home = hasLocale(lang) ? `/${lang}` : "/ar";
+
+  const user = await getSession();
+  if (!user) redirect(`/${lang}/login`);
+
+  async function fail(error: string): Promise<FormState> {
+    await trackEvent("account_delete_error", { error });
+    return { error };
+  }
+
+  if (!password) return fail("password");
+  // A few attempts per window: a typo retry works, a guessing attack does not.
+  if (await hit(`delete:${user.id}`, 5)) return fail("rate");
+  if (!verifyPassword(password, user.password_hash)) return fail("password");
+
+  // Collect media URLs before the rows cascade away.
+  const { data: mediaRows } = await supabase
+    .from("memorials")
+    .select("photos, videos")
+    .eq("user_id", user.id);
+  const mediaUrls = ((mediaRows ?? []) as { photos: string; videos: string }[]).flatMap(
+    (row) => [
+      ...parseList(row.photos ?? "[]"),
+      ...parseList(row.videos ?? "[]"),
+    ]
+  );
+
+  const { error } = await supabase.from("users").delete().eq("id", user.id);
+  if (error) return fail("failed");
+
+  if (s3Configured()) {
+    for (const url of mediaUrls) {
+      const key = s3KeyFromUrl(url);
+      if (key) await s3Delete(key);
+    }
+  }
+
+  await destroySession(); // clears the cookie (rows already cascaded)
+  await trackEvent("account_deleted");
+  redirect(home);
+}
+
+/**
+ * Rate limits for the reset funnel, backed by the shared persistent
+ * limiter (see ratelimit.ts) — the windows survive cold starts and are
+ * enforced across serverless instances.
  */
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 const MAX_RESET_REQUESTS = 3; // per phone per window
 const MAX_CODE_ATTEMPTS = 5; // verification tries per phone per window
-const resetRequests = new Map<string, number[]>();
-const codeAttempts = new Map<string, number[]>();
 
-function tooMany(key: string, map: Map<string, number[]>, max: number): boolean {
-  const now = Date.now();
-  const hits = (map.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  if (hits.length >= max) {
-    map.set(key, hits);
-    return true;
-  }
-  hits.push(now);
-  map.set(key, hits);
-  return false;
+async function tooMany(key: string, max: number): Promise<boolean> {
+  return hit(key, max, RATE_WINDOW_MS);
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -241,7 +290,7 @@ function safeEqual(a: string, b: string): boolean {
  */
 async function issueResetCode(phone: string): Promise<FormState> {
   const key = canonicalPhone(phone);
-  if (tooMany(key, resetRequests, MAX_RESET_REQUESTS)) return { error: "rate" };
+  if (await tooMany(key, MAX_RESET_REQUESTS)) return { error: "rate" };
 
   const row = await findUserByPhone(phone);
   // Always answer the same way for unknown numbers, so the form cannot be
@@ -326,7 +375,7 @@ export async function verifyCodeAction(
     await trackEvent("reset_error", { step: "verify", error });
     return { error };
   }
-  if (tooMany(key, codeAttempts, MAX_CODE_ATTEMPTS)) return fail("rate");
+  if (await tooMany(key, MAX_CODE_ATTEMPTS)) return fail("rate");
 
   const row = await findUserByPhone(phone);
   const stored = row ? String(row.reset_code ?? "") : "";
@@ -659,7 +708,7 @@ export async function generateStoryAction(
   if (!hasLocale(lang)) return { error: "lang" };
 
   // Cap AI generations per user (pollinations is free but still worth capping).
-  if (hit(`ai:${user.id}`, 20)) return { error: "rate" };
+  if (await hit(`ai:${user.id}`, 20)) return { error: "rate" };
 
   const result = await generateStory(memorial, lang);
   await supabase
@@ -906,7 +955,7 @@ export async function startPaymentAction(
     redirect(`/${lang}/order/${orderId}`);
   }
   // Caps gateway sessions per customer (each init costs an API round trip).
-  if (hit(`pay:${user.id}`, 10)) redirect(`/${lang}/order/${orderId}`);
+  if (await hit(`pay:${user.id}`, 10)) redirect(`/${lang}/order/${orderId}`);
 
   const payUrl = await startGatewayPayment(order, lang);
   redirect(payUrl ?? `/${lang}/order/${orderId}`);
@@ -920,7 +969,7 @@ export async function adminLoginAction(
 ): Promise<FormState> {
   const key = String(formData.get("key") ?? "");
   // Cap admin key attempts per IP to blunt brute-force.
-  if (hit(`admin:ip:${await clientIp()}`, 10)) return { error: "rate" };
+  if (await hit(`admin:ip:${await clientIp()}`, 10)) return { error: "rate" };
   if (!verifyAdminKey(key)) return { error: "key" };
   await createAdminSession();
   return null;
