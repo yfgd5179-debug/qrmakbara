@@ -27,6 +27,14 @@ export default async function LandingPage({
           }}
         />
         <div className="relative mx-auto max-w-6xl px-4 py-12 sm:py-28">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-mark.png"
+            alt=""
+            width={80}
+            height={80}
+            className="mb-5 h-16 w-16 rounded-xl shadow-[0_8px_30px_rgba(212,175,55,0.25)] sm:h-20 sm:w-20"
+          />
           <span className="inline-block rounded-full border border-gold/40 px-4 py-1 text-sm text-gold">
             {t.heroBadge}
           </span>

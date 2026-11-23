@@ -56,9 +56,19 @@ export default async function RootLayout({
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 sm:gap-x-4 sm:px-4 sm:py-3">
             <Link
               href={`/${lang}`}
-              className="text-base font-bold tracking-tight text-slate-100 sm:text-lg"
+              className="flex items-center gap-2 text-base font-bold tracking-tight text-slate-100 sm:text-lg"
             >
-              QR <span className="text-gold">Makbara</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo-mark.png"
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8 shrink-0 rounded-md"
+              />
+              <span>
+                QR <span className="text-gold">Makbara</span>
+              </span>
             </Link>
 
             <nav className="ms-auto flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm sm:gap-x-3">
@@ -71,7 +81,7 @@ export default async function RootLayout({
               {user && (
                 <Link
                   href={`/${lang}/dashboard`}
-                  className="text-slate-300 hover:text-white"
+                  className="rounded-lg px-2.5 py-1.5 text-slate-300 hover:text-white"
                 >
                   {dict.nav.dashboard}
                 </Link>
@@ -97,7 +107,7 @@ export default async function RootLayout({
               {!user && (
                 <Link
                   href={`/${lang}/login`}
-                  className="text-slate-300 hover:text-white"
+                  className="rounded-lg px-2.5 py-1.5 text-slate-300 hover:text-white"
                 >
                   {dict.nav.login}
                 </Link>
@@ -117,8 +127,18 @@ export default async function RootLayout({
         <footer className="border-t border-slate-800 bg-slate-950">
           <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 text-sm text-slate-400 sm:grid-cols-2 sm:py-8">
             <div>
-              <div className="mb-2 font-bold text-slate-200">
-                QR <span className="text-gold">Makbara</span>
+              <div className="mb-2 flex items-center gap-2 font-bold text-slate-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/logo-mark.png"
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 shrink-0 rounded"
+                />
+                <span>
+                  QR <span className="text-gold">Makbara</span>
+                </span>
               </div>
               <p>{dict.footer.about}</p>
             </div>

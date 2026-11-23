@@ -206,7 +206,7 @@ export default async function DashboardPage({
       </section>
 
       <form action={logoutAction} className="mt-10">
-        <button className="text-sm text-slate-500 hover:text-slate-300">
+        <button className="rounded-lg px-2.5 py-1.5 text-sm text-slate-500 hover:text-slate-300">
           {dict.nav.logout}
         </button>
       </form>

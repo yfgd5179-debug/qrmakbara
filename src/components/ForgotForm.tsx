@@ -68,7 +68,7 @@ export function ForgotForm({
           </button>
         </form>
         <p className="mt-6 text-center text-sm text-slate-400">
-          <a href={`/${lang}/login`} className="text-gold underline">
+          <a href={`/${lang}/login`} className="inline-block py-1.5 text-gold underline">
             {t.submitLogin}
           </a>
         </p>

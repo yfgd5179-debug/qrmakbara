@@ -145,7 +145,10 @@ export function AuthForm({
 
         {mode === "login" && (
           <p className="text-end text-sm">
-            <Link href={`/${lang}/forgot`} className="text-gold underline">
+            <Link
+              href={`/${lang}/forgot`}
+              className="inline-block py-1.5 text-gold underline"
+            >
               {t.forgotLink}
             </Link>
           </p>
@@ -154,7 +157,7 @@ export function AuthForm({
           {mode === "login" ? t.noAccount : t.haveAccount}{" "}
           <Link
             href={`/${lang}/${mode === "login" ? "register" : "login"}`}
-            className="text-gold underline"
+            className="inline-block py-1.5 text-gold underline"
           >
             {mode === "login" ? t.submitRegister : t.submitLogin}
           </Link>
