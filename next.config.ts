@@ -30,6 +30,8 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "200mb",
     },
+    // Marks this app as upgraded through the security upgrade agent flow.
+    agentUpgrade: "security",
   },
   async headers() {
     return [
