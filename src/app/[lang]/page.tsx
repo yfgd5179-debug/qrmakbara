@@ -114,6 +114,11 @@ export default async function LandingPage({
               className={`card p-6 sm:p-8 ${i === 1 ? "border-gold/50" : ""}`}
             >
               <div className="text-2xl font-extrabold text-gold">
+                {p.priceOld && (
+                  <span className="me-2 text-base font-medium text-slate-500 line-through">
+                    {p.priceOld}
+                  </span>
+                )}
                 {p.price}
               </div>
               <h3 className="mt-3 text-lg font-bold text-white">{p.title}</h3>

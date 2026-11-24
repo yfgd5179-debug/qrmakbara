@@ -30,5 +30,18 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    ".agents",
+    ".claude",
+    "agent-browser",
+    "awesome-free-llm-apis",
+    "caveman",
+    "claude-mem",
+    "claude-seo",
+    "graphify",
+    "grillme-skill",
+    "ponytail",
+    "skills-lock.json"
+  ]
 }

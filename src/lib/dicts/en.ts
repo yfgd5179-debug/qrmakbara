@@ -60,11 +60,13 @@ export const en = {
       {
         title: "Memorial page + AI story",
         price: "Free",
+        priceOld: "",
         text: "Account, questions, life story, photos and videos.",
       },
       {
         title: "Metal plaque with QR",
-        price: "75,000 IQD / 20 USD",
+        priceOld: "75,000 IQD",
+        price: "50,000 IQD",
         text: "Durable metal plate with your QR code, delivered to your address.",
       },
     ],

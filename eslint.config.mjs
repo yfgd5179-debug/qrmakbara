@@ -12,6 +12,19 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Third-party skill/agent directories dropped into the repo root —
+    // not part of this app and not linted by it.
+    ".agents/**",
+    ".claude/**",
+    "agent-browser/**",
+    "awesome-free-llm-apis/**",
+    "caveman/**",
+    "claude-mem/**",
+    "claude-seo/**",
+    "graphify/**",
+    "grillme-skill/**",
+    "ponytail/**",
+    "skills-lock.json",
   ]),
 ]);
 

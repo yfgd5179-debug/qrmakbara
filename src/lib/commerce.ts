@@ -43,7 +43,7 @@ export function orderStatusBadge(status: string): string {
 
 /** Price of the metal plaque depending on where the customer is. */
 export function priceFor(country: string): { amount: number; currency: string } {
-  if (country === "IQ") return { amount: 75000, currency: "IQD" };
+  if (country === "IQ") return { amount: 50000, currency: "IQD" };
   return { amount: 20, currency: "USD" };
 }
 

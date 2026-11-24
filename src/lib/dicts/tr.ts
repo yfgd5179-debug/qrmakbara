@@ -62,11 +62,13 @@ export const tr: Dict = {
       {
         title: "Anı sayfası + yapay zeka öyküsü",
         price: "Ücretsiz",
+        priceOld: "",
         text: "Hesap, sorular, yaşam öyküsü, fotoğraflar ve videolar.",
       },
       {
         title: "QR'lı metal plaka",
-        price: "75.000 IQD / 20 USD",
+        priceOld: "75.000 IQD",
+        price: "50.000 IQD",
         text: "QR kodunuzu içeren dayanıklı metal plaka, adresinize teslim.",
       },
     ],
