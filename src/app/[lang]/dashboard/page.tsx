@@ -125,15 +125,7 @@ export default async function DashboardPage({
                         deathYear={m.death_year}
                         gender={m.gender}
                         lang={lang}
-                        labels={{
-                          title: dict.order.qrTitle,
-                          text: dict.order.qrText,
-                          png: dict.order.downloadPng,
-                          svg: dict.order.downloadSvg,
-                          copy: dict.order.copyLink,
-                          copied: dict.common.copied,
-                          error: dict.order.qrError,
-                        }}
+                        labels={{ error: dict.order.qrError }}
                       />
                     </div>
                   </details>

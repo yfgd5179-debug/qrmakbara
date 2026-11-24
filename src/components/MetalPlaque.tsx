@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import QRCode from "qrcode";
 
 /**
@@ -336,12 +336,7 @@ function buildPlaque({
 }
 
 type Labels = {
-  title: string;
-  text: string;
-  png: string;
-  svg: string;
-  copy: string;
-  copied: string;
+  /** Shown in place of the artwork when QR generation fails. */
   error: string;
 };
 
@@ -362,9 +357,6 @@ export function MetalPlaque({
   lang: string;
   labels: Labels;
 }) {
-  const [copied, setCopied] = useState(false);
-  const fileBase = `plaque-${path.split("/").filter(Boolean).pop() ?? "memorial"}`;
-
   // The absolute URL only exists in the browser: useSyncExternalStore reads it
   // without a setState-inside-effect, and returns "" during server rendering.
   const origin = useSyncExternalStore(
@@ -384,63 +376,13 @@ export function MetalPlaque({
     }
   }, [url, name, birthYear, deathYear, lang, gender]);
 
-  async function downloadPng() {
-    if (!art) return;
-    const img = new Image();
-    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(art)}`;
-    await img.decode();
-    const scale = 3; // 2640 x 1560 — comfortably print-ready
-    const canvas = document.createElement("canvas");
-    canvas.width = W * scale;
-    canvas.height = H * scale;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/png")
-    );
-    if (!blob) return;
-    const href = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = `${fileBase}.png`;
-    a.click();
-    URL.revokeObjectURL(href);
-  }
-
-  function downloadSvg() {
-    if (!art) return;
-    const blob = new Blob([art], { type: "image/svg+xml;charset=utf-8" });
-    const href = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = `${fileBase}.svg`;
-    a.click();
-    URL.revokeObjectURL(href);
-  }
-
-  async function copyLink() {
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard blocked */
-    }
-  }
-
-  const secondaryBtn =
-    "btn-outline text-sm text-slate-200 hover:border-slate-400 disabled:opacity-50";
-
   return (
     <div className="card p-4 sm:p-6">
-      <h3 className="font-bold text-white">{labels.title}</h3>
-      <p className="mt-1 text-sm text-slate-400">{labels.text}</p>
-
-      <div className="mt-4 rounded-xl bg-slate-950/60 p-2 sm:p-4">
+      {/* Preview only: the PNG/SVG export and copy-link controls were
+          removed on request, so nothing but the plaque itself renders. */}
+      <div className="rounded-xl bg-slate-950/60 p-2 sm:p-4">
         {art ? (
-          // The plaque is one self-contained SVG string (preview + exports).
+          // The plaque is one self-contained SVG string.
           <div dangerouslySetInnerHTML={{ __html: art }} />
         ) : art === null ? (
           <div className="flex aspect-[880/520] items-center justify-center rounded-lg bg-slate-900 px-4 text-center text-sm text-red-400">
@@ -452,26 +394,6 @@ export function MetalPlaque({
             className="aspect-[880/520] w-full animate-pulse rounded-lg bg-slate-800/70"
           />
         )}
-      </div>
-
-      <p dir="ltr" className="mt-3 break-all text-xs text-slate-500">
-        {url || "…"}
-      </p>
-
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
-        <button
-          onClick={downloadPng}
-          disabled={!art}
-          className="btn-gold text-sm"
-        >
-          {labels.png}
-        </button>
-        <button onClick={downloadSvg} disabled={!art} className={secondaryBtn}>
-          {labels.svg}
-        </button>
-        <button onClick={copyLink} disabled={!url} className={secondaryBtn}>
-          {copied ? labels.copied : labels.copy}
-        </button>
       </div>
     </div>
   );

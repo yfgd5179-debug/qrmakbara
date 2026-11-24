@@ -858,15 +858,7 @@ export function Wizard({ lang, dict, user, initial }: Props) {
                 deathYear={deathYear}
                 gender={gender}
                 lang={lang}
-                labels={{
-                  title: dict.order.qrTitle,
-                  text: dict.order.qrText,
-                  png: dict.order.downloadPng,
-                  svg: dict.order.downloadSvg,
-                  copy: dict.order.copyLink,
-                  copied: c.copied,
-                  error: dict.order.qrError,
-                }}
+                labels={{ error: dict.order.qrError }}
               />
             )}
 

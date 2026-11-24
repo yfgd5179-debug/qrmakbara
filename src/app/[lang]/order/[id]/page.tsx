@@ -123,15 +123,7 @@ export default async function OrderPage({
           deathYear={memorial.death_year}
           gender={memorial.gender}
           lang={lang}
-          labels={{
-            title: t.qrTitle,
-            text: t.qrText,
-            png: t.downloadPng,
-            svg: t.downloadSvg,
-            copy: t.copyLink,
-            copied: dict.common.copied,
-            error: t.qrError,
-          }}
+          labels={{ error: t.qrError }}
         />
       </div>
 
