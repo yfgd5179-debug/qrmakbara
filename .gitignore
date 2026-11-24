@@ -43,3 +43,17 @@ data/
 public/uploads/
 samples/
 .env.local
+
+# third-party skill/agent tooling dropped into the repo root by other
+# tools — not part of this app, never committed
+/.agents/
+/.claude/
+/agent-browser/
+/awesome-free-llm-apis/
+/caveman/
+/claude-mem/
+/claude-seo/
+/graphify/
+/grillme-skill/
+/ponytail/
+/skills-lock.json
