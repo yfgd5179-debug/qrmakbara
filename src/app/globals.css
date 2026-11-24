@@ -3,6 +3,9 @@
 @theme {
   --font-sans: "Segoe UI", Tahoma, "Noto Sans Arabic", "Noto Kufi Arabic",
     system-ui, -apple-system, sans-serif;
+  /* Brand gold as a real theme color so border-gold/ring-gold/bg-gold/…
+     utilities (logo frames, badges, glows) resolve in Tailwind v4. */
+  --color-gold: #d4af37;
 }
 
 html {

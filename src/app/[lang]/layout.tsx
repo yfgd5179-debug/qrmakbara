@@ -64,14 +64,22 @@ export default async function RootLayout({
                 alt=""
                 width={32}
                 height={32}
-                className="h-8 w-8 shrink-0 rounded-md"
+                className="h-8 w-8 shrink-0 rounded-md ring-1 ring-gold/40 shadow-[0_0_12px_rgba(212,175,55,0.3)]"
               />
               <span>
                 QR <span className="text-gold">Makbara</span>
               </span>
             </Link>
 
-            <nav className="ms-auto flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm sm:gap-x-3">
+            {/* Phone: closes the logo row (ms-auto) so row 1 is never a lone
+                logo. Desktop: ordered last, right after the nav links. */}
+            <div className="order-1 ms-auto sm:order-3 sm:ms-0">
+              <LangSwitcher current={lang} label={dict.nav.language} />
+            </div>
+
+            {/* Phone: own full-width row, items spread edge to edge.
+                Desktop: one row, pushed to the end after the logo. */}
+            <nav className="order-2 flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-sm sm:order-1 sm:w-auto sm:ms-auto sm:justify-start sm:gap-x-3">
               <Link
                 href={`/${lang}`}
                 className="hidden text-slate-300 hover:text-white sm:inline"
@@ -81,7 +89,7 @@ export default async function RootLayout({
               {user && (
                 <Link
                   href={`/${lang}/dashboard`}
-                  className="rounded-lg px-2.5 py-1.5 text-slate-300 hover:text-white"
+                  className="rounded-lg px-2 py-1.5 text-slate-300 hover:text-white sm:px-2.5"
                 >
                   {dict.nav.dashboard}
                 </Link>
@@ -89,7 +97,7 @@ export default async function RootLayout({
               {user && (
                 <Link
                   href={`/${lang}/create`}
-                  className="rounded-lg bg-slate-800 px-3 py-1.5 text-slate-100 hover:bg-slate-700"
+                  className="rounded-lg bg-slate-800 px-2.5 py-1.5 text-slate-100 hover:bg-slate-700 sm:px-3"
                 >
                   {dict.nav.create}
                 </Link>
@@ -107,7 +115,7 @@ export default async function RootLayout({
               {!user && (
                 <Link
                   href={`/${lang}/login`}
-                  className="rounded-lg px-2.5 py-1.5 text-slate-300 hover:text-white"
+                  className="rounded-lg px-2 py-1.5 text-slate-300 hover:text-white sm:px-2.5"
                 >
                   {dict.nav.login}
                 </Link>
@@ -117,7 +125,6 @@ export default async function RootLayout({
                   {dict.nav.register}
                 </Link>
               )}
-              <LangSwitcher current={lang} label={dict.nav.language} />
             </nav>
           </div>
         </header>
@@ -127,15 +134,17 @@ export default async function RootLayout({
         <footer className="border-t border-slate-800 bg-slate-950">
           <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 text-sm text-slate-400 sm:grid-cols-2 sm:py-8">
             <div>
-              <div className="mb-2 flex items-center gap-2 font-bold text-slate-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/logo-mark.png"
-                  alt=""
-                  width={24}
-                  height={24}
-                  className="h-6 w-6 shrink-0 rounded"
-                />
+              <div className="mb-3 flex items-center gap-2.5 font-bold text-slate-200">
+                <span className="inline-flex rounded-lg border border-gold/40 bg-slate-900/60 p-1 shadow-[0_0_16px_rgba(212,175,55,0.2)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/logo-mark.png"
+                    alt=""
+                    width={24}
+                    height={24}
+                    className="h-6 w-6 shrink-0 rounded"
+                  />
+                </span>
                 <span>
                   QR <span className="text-gold">Makbara</span>
                 </span>

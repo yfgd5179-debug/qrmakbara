@@ -27,14 +27,19 @@ export default async function LandingPage({
           }}
         />
         <div className="relative mx-auto max-w-6xl px-4 py-12 sm:py-28">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo-mark.png"
-            alt=""
-            width={80}
-            height={80}
-            className="mb-5 h-16 w-16 rounded-xl shadow-[0_8px_30px_rgba(212,175,55,0.25)] sm:h-20 sm:w-20"
-          />
+          {/* Framed logo tile: gold hairline + halo so the mark reads as a
+              deliberate brand object instead of a floating image. Block-level
+              (`flex w-fit`) keeps it on its own line above the badge. */}
+          <div className="mb-5 flex w-fit rounded-2xl border border-gold/40 bg-slate-900/60 p-2 shadow-[0_0_40px_rgba(212,175,55,0.35)] sm:mb-6 sm:p-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-mark.png"
+              alt=""
+              width={80}
+              height={80}
+              className="h-14 w-14 rounded-xl sm:h-16 sm:w-16"
+            />
+          </div>
           <span className="inline-block rounded-full border border-gold/40 px-4 py-1 text-sm text-gold">
             {t.heroBadge}
           </span>
