@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { DuasSection } from "@/components/DuasSection";
 import { Gallery } from "@/components/Gallery";
 import { TrackEvent } from "@/components/TrackEvent";
 import { getSession } from "@/lib/auth";
 import { getDict, hasLocale } from "@/lib/dict";
 import { supabase, parseList } from "@/lib/db";
+import { ARABIC_FONT, FAJR_REF, FAJR_VERSE } from "@/lib/duas";
 import { playbackUrl } from "@/lib/s3";
 import type { Memorial } from "@/lib/types";
 
@@ -56,7 +58,11 @@ export default async function MemorialPage({
   if (memorial.status !== "published" && !isOwner) notFound();
 
   const t = dict.memorial;
-  const photos = parseList(memorial.photos);
+  const allPhotos = parseList(memorial.photos);
+  // The first upload doubles as the portrait in the header; the gallery
+  // shows the rest so the same picture is never repeated on one screen.
+  const portrait = allPhotos[0] ?? "";
+  const photos = allPhotos.slice(1);
   // S3/B2 videos are stored in a private bucket: mint a short-lived presigned
   // GET URL on every render. Supabase (and public-CDN) URLs pass through.
   const videos = parseList(memorial.videos).map(playbackUrl);
@@ -78,6 +84,24 @@ export default async function MemorialPage({
           counted by Web Analytics too; this adds the slug + owner filter. */}
       <TrackEvent name="memorial_view" props={{ slug, owner: isOwner }} />
       <header className="text-center">
+        {portrait && (
+          <div className="mb-7">
+            {/* Bismillah sits directly above the portrait, as requested. */}
+            <p
+              dir="rtl"
+              className="mb-4 text-lg text-gold sm:text-xl"
+              style={{ fontFamily: ARABIC_FONT }}
+            >
+              بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={portrait}
+              alt={memorial.name}
+              className="mx-auto h-32 w-32 rounded-full border-2 border-gold/50 object-cover shadow-[0_0_30px_rgba(212,175,55,0.3)] sm:h-40 sm:w-40"
+            />
+          </div>
+        )}
         <div
           aria-hidden
           className="mx-auto mb-6 h-px w-24 bg-gradient-to-r from-transparent via-gold to-transparent"
@@ -108,6 +132,24 @@ export default async function MemorialPage({
           className="mx-auto mt-6 h-px w-24 bg-gradient-to-r from-transparent via-gold to-transparent"
         />
       </header>
+
+      {/* Al-Fajr 27-30 — the epitaph verse for the departed. */}
+      <figure className="mx-auto mt-9 max-w-2xl rounded-2xl border border-gold/30 bg-slate-900/60 p-6 text-center sm:p-8">
+        <blockquote
+          dir="rtl"
+          className="text-xl leading-[2.2] text-slate-100 sm:text-2xl"
+          style={{ fontFamily: ARABIC_FONT }}
+        >
+          {FAJR_VERSE}
+        </blockquote>
+        <figcaption
+          dir="rtl"
+          className="mt-4 text-sm text-gold"
+          style={{ fontFamily: ARABIC_FONT }}
+        >
+          {FAJR_REF}
+        </figcaption>
+      </figure>
 
       {(memorial.school ||
         memorial.university ||
@@ -186,6 +228,8 @@ export default async function MemorialPage({
           </div>
         </section>
       )}
+
+      <DuasSection t={dict.duas} gender={memorial.gender} />
 
       <footer className="mt-16 text-center text-sm text-slate-500">
         <p>{t.scanHint}</p>
