@@ -27,7 +27,8 @@ body {
    keeping one-finger scroll and pinch-zoom intact. */
 button,
 a,
-select {
+select,
+summary {
   touch-action: manipulation;
 }
 

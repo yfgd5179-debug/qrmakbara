@@ -11,6 +11,10 @@ import type { Dict } from "@/lib/dict";
  * text. The wording is fixed by tradition, so only the headings are
  * localized; a recorded female gender switches the dua wording to the
  * feminine form.
+ *
+ * The whole section collapses into a single tappable bar (native
+ * <details>, no client JS) so it doesn't push the rest of the memorial
+ * down on a phone. The 44 px summary row doubles as its tap target.
  */
 export function DuasSection({
   t,
@@ -57,27 +61,47 @@ export function DuasSection({
   };
 
   return (
-    <section className="mt-14 sm:mt-16">
-      <h2 className="text-center text-2xl font-bold text-white">
-        {t.title}
-      </h2>
-      <p className="mx-auto mt-3 max-w-xl text-center text-sm text-slate-400">
-        {t.intro}
-      </p>
+    <section className="mt-10 sm:mt-14">
+      <details className="group overflow-hidden rounded-2xl border border-gold/30 bg-slate-900/40">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 select-none [&::-webkit-details-marker]:hidden sm:px-6">
+          <span className="text-start">
+            <h2 className="text-lg font-bold text-white sm:text-xl">
+              {t.title}
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
+              {t.intro}
+            </p>
+          </span>
+          <svg
+            aria-hidden
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-5 w-5 shrink-0 text-gold transition-transform duration-200 group-open:rotate-180"
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </summary>
 
-      <h3 className="mt-8 text-center text-lg font-semibold text-gold">
-        {t.quranTitle}
-      </h3>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        {QURAN_READINGS.map(render)}
-      </div>
+        <div className="px-4 pb-5 sm:px-6">
+          <h3 className="mt-2 text-center text-base font-semibold text-gold sm:text-lg">
+            {t.quranTitle}
+          </h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-4">
+            {QURAN_READINGS.map(render)}
+          </div>
 
-      <h3 className="mt-10 text-center text-lg font-semibold text-gold">
-        {t.duaTitle}
-      </h3>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        {DUAS.map(render)}
-      </div>
+          <h3 className="mt-7 text-center text-base font-semibold text-gold sm:mt-8 sm:text-lg">
+            {t.duaTitle}
+          </h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-4">
+            {DUAS.map(render)}
+          </div>
+        </div>
+      </details>
     </section>
   );
 }

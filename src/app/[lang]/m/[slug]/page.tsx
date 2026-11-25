@@ -79,13 +79,13 @@ export default async function MemorialPage({
       : "";
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12">
+    <div className="mx-auto max-w-4xl px-4 pt-7 pb-10 sm:py-12">
       {/* Which memorials (and how often) are actually opened. Page views are
           counted by Web Analytics too; this adds the slug + owner filter. */}
       <TrackEvent name="memorial_view" props={{ slug, owner: isOwner }} />
       <header className="text-center">
         {portrait && (
-          <div className="mb-7">
+          <div className="mb-6 sm:mb-7">
             {/* Bismillah sits directly above the portrait, as requested. */}
             <p
               dir="rtl"
@@ -134,17 +134,17 @@ export default async function MemorialPage({
       </header>
 
       {/* Al-Fajr 27-30 — the epitaph verse for the departed. */}
-      <figure className="mx-auto mt-9 max-w-2xl rounded-2xl border border-gold/30 bg-slate-900/60 p-6 text-center sm:p-8">
+      <figure className="mx-auto mt-7 max-w-2xl rounded-2xl border border-gold/30 bg-slate-900/60 p-5 text-center sm:mt-9 sm:p-8">
         <blockquote
           dir="rtl"
-          className="text-xl leading-[2.2] text-slate-100 sm:text-2xl"
+          className="text-lg leading-[2.05] text-slate-100 sm:text-2xl sm:leading-[2.2]"
           style={{ fontFamily: ARABIC_FONT }}
         >
           {FAJR_VERSE}
         </blockquote>
         <figcaption
           dir="rtl"
-          className="mt-4 text-sm text-gold"
+          className="mt-3 text-sm text-gold sm:mt-4"
           style={{ fontFamily: ARABIC_FONT }}
         >
           {FAJR_REF}
@@ -155,7 +155,7 @@ export default async function MemorialPage({
         memorial.university ||
         memorial.job ||
         memorial.children) && (
-        <section className="mt-10 grid gap-3 sm:grid-cols-2">
+        <section className="mt-8 grid gap-3 sm:mt-10 sm:grid-cols-2">
           {memorial.school && (
             <Fact label={dict.wizard.school} value={memorial.school} />
           )}
@@ -171,12 +171,12 @@ export default async function MemorialPage({
         </section>
       )}
 
-      <section className="mt-10 sm:mt-12">
-        <h2 className="text-center text-2xl font-bold text-white">
+      <section className="mt-8 sm:mt-12">
+        <h2 className="text-center text-xl font-bold text-white sm:text-2xl">
           {t.storyTitle}
         </h2>
         {paragraphs.length > 0 ? (
-          <div className="mx-auto mt-6 max-w-2xl space-y-5 text-[17px] leading-loose text-slate-300">
+          <div className="mx-auto mt-5 max-w-2xl space-y-4 text-base leading-loose text-slate-300 sm:mt-6 sm:space-y-5 sm:text-[17px]">
             {paragraphs.map((p, i) => (
               <p key={i}>{p}</p>
             ))}
@@ -186,15 +186,15 @@ export default async function MemorialPage({
         )}
 
         {memorial.quote && (
-          <blockquote className="mx-auto mt-8 max-w-xl border-s-4 border-gold bg-slate-900/60 p-5 text-center text-lg italic text-slate-200">
+          <blockquote className="mx-auto mt-7 max-w-xl border-s-4 border-gold bg-slate-900/60 p-4 text-center text-base italic text-slate-200 sm:mt-8 sm:p-5 sm:text-lg">
             {memorial.quote}
           </blockquote>
         )}
       </section>
 
       {photos.length > 0 && (
-        <section className="mt-10 sm:mt-12">
-          <h2 className="text-center text-2xl font-bold text-white">
+        <section className="mt-8 sm:mt-12">
+          <h2 className="text-center text-xl font-bold text-white sm:text-2xl">
             {t.gallery}
           </h2>
           <div className="mt-6">
@@ -210,8 +210,8 @@ export default async function MemorialPage({
       )}
 
       {videos.length > 0 && (
-        <section className="mt-10 sm:mt-12">
-          <h2 className="text-center text-2xl font-bold text-white">
+        <section className="mt-8 sm:mt-12">
+          <h2 className="text-center text-xl font-bold text-white sm:text-2xl">
             {t.videos}
           </h2>
           <div className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -231,7 +231,7 @@ export default async function MemorialPage({
 
       <DuasSection t={dict.duas} gender={memorial.gender} />
 
-      <footer className="mt-16 text-center text-sm text-slate-500">
+      <footer className="mt-12 text-center text-sm text-slate-500 sm:mt-16">
         <p>{t.scanHint}</p>
         <p className="mt-1">
           {t.madeWith} —{" "}
